@@ -1,0 +1,18 @@
+{
+  "name": "meadstep",
+  "version": "0.0.0",
+  "private": true,
+  "packageManager": "pnpm@10.33.2",
+  "scripts": {
+    "dev": "corepack pnpm --parallel --filter @meadstep/frontend --filter @meadstep/backend dev",
+    "dev:frontend": "corepack pnpm --filter @meadstep/frontend dev",
+    "dev:backend": "corepack pnpm --filter @meadstep/backend dev",
+    "build": "corepack pnpm -r build",
+    "test": "corepack pnpm -r test",
+    "format": "prettier --write \"**/*.{json,yaml,ts,html,scss}\"",
+    "format:check": "prettier --check \"**/*.{json,yaml,ts,html,scss}\""
+  },
+  "devDependencies": {
+    "prettier": "^3.8.1"
+  }
+}

@@ -1,0 +1,9 @@
+node_modules/
+dist/
+.angular/
+.pnpm-store/
+coverage/
+.DS_Store
+*.log
+apps/*/node_modules/
+apps/*/dist/
