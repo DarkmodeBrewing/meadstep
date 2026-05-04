@@ -188,7 +188,7 @@ Freemium:
 * Keep formatting tight using Prettier
 * Monorepo
 * Frontend: Angular latest version (signals for reactive calculations)
-* Backend: Calculation formulas should live in API (Should we use Node, Rust, C# or something else?) 
+* Backend: Calculation formulas should live in API. Backend in Node, using typescript.
 * State: local-first, database backed later
 * Architecture:
 
