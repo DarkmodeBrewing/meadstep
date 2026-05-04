@@ -1,58 +1,66 @@
 # Frontend
 
-This project was generated using [Angular CLI](https://github.com/angular/angular-cli) version 21.2.9.
+This project is part of the MeadStep pnpm monorepo. Run all commands from the **repo root** using pnpm workspace filters, or from inside this directory with `pnpm`.
 
 ## Development server
 
-To start a local development server, run:
+From the repo root:
 
 ```bash
-ng serve
+pnpm --filter @meadstep/frontend dev
+```
+
+Or from `apps/frontend`:
+
+```bash
+pnpm dev
 ```
 
 Once the server is running, open your browser and navigate to `http://localhost:4200/`. The application will automatically reload whenever you modify any of the source files.
 
 ## Code scaffolding
 
-Angular CLI includes powerful code scaffolding tools. To generate a new component, run:
+Angular CLI includes powerful code scaffolding tools. To generate a new component, run from `apps/frontend`:
 
 ```bash
-ng generate component component-name
+pnpm ng generate component component-name
 ```
 
 For a complete list of available schematics (such as `components`, `directives`, or `pipes`), run:
 
 ```bash
-ng generate --help
+pnpm ng generate --help
 ```
 
 ## Building
 
-To build the project run:
+From the repo root:
 
 ```bash
-ng build
+pnpm --filter @meadstep/frontend build
+```
+
+Or from `apps/frontend`:
+
+```bash
+pnpm build
 ```
 
 This will compile your project and store the build artifacts in the `dist/` directory. By default, the production build optimizes your application for performance and speed.
 
 ## Running unit tests
 
-To execute unit tests with the [Vitest](https://vitest.dev/) test runner, use the following command:
+From the repo root:
 
 ```bash
-ng test
+pnpm --filter @meadstep/frontend test
 ```
 
-## Running end-to-end tests
-
-For end-to-end (e2e) testing, run:
+Or from `apps/frontend`:
 
 ```bash
-ng e2e
+pnpm test
 ```
-
-Angular CLI does not come with an end-to-end testing framework by default. You can choose one that suits your needs.
 
 ## Additional Resources
 

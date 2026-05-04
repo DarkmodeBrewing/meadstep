@@ -1,6 +1,7 @@
 import { Component, signal } from '@angular/core';
 
 @Component({
+  standalone: true,
   selector: 'app-root',
   imports: [],
   templateUrl: './app.html',
