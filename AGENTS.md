@@ -41,6 +41,20 @@ The MVP should be mobile-first and usable mid-brew:
 - Make the brew plan easy to copy.
 - Keep warnings plain and actionable.
 
+## Agent skills
+
+### Issue tracker
+
+Issues and PRDs are tracked as local markdown files in `docs/issues/` and `docs/prds/`. See `docs/agents/issue-tracker.md`.
+
+### Triage labels
+
+Use the default triage vocabulary as local issue frontmatter status values. See `docs/agents/triage-labels.md`.
+
+### Domain docs
+
+This is a single-context repo with central product and decision docs under `docs/`. See `docs/agents/domain.md`.
+
 ## Git
 
 When committing in this repository, always use:
