@@ -3,18 +3,44 @@
     <p class="eyebrow">Honey-only smoke planner</p>
     <h1>{{ title() }}</h1>
 
+    <fieldset class="unit-system" aria-label="Unit system">
+      <legend>Units</legend>
+      <label for="unit-system-metric">
+        <input
+          id="unit-system-metric"
+          type="radio"
+          name="unit-system"
+          value="metric"
+          [checked]="unitSystem() === 'metric'"
+          (change)="setUnitSystem('metric')"
+        />
+        <span>Metric</span>
+      </label>
+      <label for="unit-system-us">
+        <input
+          id="unit-system-us"
+          type="radio"
+          name="unit-system"
+          value="us"
+          [checked]="unitSystem() === 'us'"
+          (change)="setUnitSystem('us')"
+        />
+        <span>US</span>
+      </label>
+    </fieldset>
+
     <div class="controls" aria-label="Planner inputs">
-      <label for="batch-volume-liters">
+      <label for="batch-volume">
         Batch volume
         <input
-          id="batch-volume-liters"
+          id="batch-volume"
           type="number"
           min="1"
-          step="0.5"
-          [ngModel]="batchVolumeLiters()"
-          (ngModelChange)="batchVolumeLiters.set($event)"
+          step="0.25"
+          [ngModel]="batchVolume()"
+          (ngModelChange)="batchVolume.set($event)"
         />
-        <span>L</span>
+        <span>{{ formatVolumeUnit() }}</span>
       </label>
 
       <label for="target-abv-percent">
@@ -35,20 +61,27 @@
     <dl class="result">
       <div>
         <dt>Honey needed</dt>
-        <dd>{{ formatKg(plannerResult().honeyKg) }}</dd>
+        <dd>{{ formatHoneyWeight() }}</dd>
       </div>
       <div>
         <dt>Estimated OG</dt>
-        <dd>{{ formatGravity(plannerResult().estimatedOriginalGravity) }}</dd>
+        <dd>
+          {{ formatGravity(plannerResult().display.estimatedOriginalGravity) }}
+        </dd>
       </div>
       <div>
         <dt>Estimated FG</dt>
-        <dd>{{ formatGravity(plannerResult().estimatedFinalGravity) }}</dd>
+        <dd>{{ formatGravity(plannerResult().display.estimatedFinalGravity) }}</dd>
       </div>
       <div>
         <dt>Estimated ABV</dt>
-        <dd>{{ formatPercent(plannerResult().estimatedAbvPercent) }}</dd>
+        <dd>{{ formatPercent(plannerResult().display.estimatedAbvPercent) }}</dd>
       </div>
     </dl>
+
+    <section class="plan-output" aria-label="Generated planner output">
+      <h2>Brew plan</h2>
+      <pre id="planner-output">{{ plannerOutput() }}</pre>
+    </section>
   </section>
 </main>
