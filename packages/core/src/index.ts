@@ -11,7 +11,7 @@ export const honeyOnlyPlannerInputSchema = z.object({
 
 export const honeyOnlyPlannerResultSchema = z.object({
   batchVolumeLiters: z.number().positive(),
-  targetAbvPercent: z.number().positive(),
+  targetAbvPercent: z.number().positive().max(20),
   honeyKg: z.number().positive(),
   estimatedOriginalGravity: z.number().positive(),
   estimatedFinalGravity: z.number().positive(),
