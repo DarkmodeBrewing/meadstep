@@ -35,16 +35,27 @@ export class App {
     ].join('\n');
   });
 
+  protected setBatchVolume(value: number | null): void {
+    if (value !== null && Number.isFinite(value) && value > 0) {
+      this.batchVolume.set(value);
+    }
+  }
+
   protected setUnitSystem(unitSystem: UnitSystem): void {
     const currentUnitSystem = this.unitSystem();
 
     if (currentUnitSystem !== unitSystem) {
-      const nextBatchVolume =
-        unitSystem === 'us'
-          ? convertVolume(this.batchVolume(), 'liters', 'gallons')
-          : convertVolume(this.batchVolume(), 'gallons', 'liters');
+      const current = this.batchVolume();
 
-      this.batchVolume.set(nextBatchVolume);
+      if (Number.isFinite(current) && current > 0) {
+        const nextBatchVolume =
+          unitSystem === 'us'
+            ? convertVolume(current, 'liters', 'gallons')
+            : convertVolume(current, 'gallons', 'liters');
+
+        this.batchVolume.set(nextBatchVolume);
+      }
+
       this.unitSystem.set(unitSystem);
     }
   }

@@ -38,7 +38,7 @@
           min="1"
           step="0.25"
           [ngModel]="batchVolume()"
-          (ngModelChange)="batchVolume.set($event)"
+          (ngModelChange)="setBatchVolume($event)"
         />
         <span>{{ formatVolumeUnit() }}</span>
       </label>
