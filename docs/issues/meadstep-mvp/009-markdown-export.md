@@ -9,6 +9,9 @@ user_stories:
   - 52
   - 53
   - 57
+  - 61
+  - 68
+  - 70
 ---
 
 ## Parent
@@ -25,7 +28,10 @@ Generate a practical Markdown brew plan from the same structured planner result 
 - [ ] The UI displays copy and download actions for the generated plan.
 - [ ] Copy and download use the same generated Markdown string.
 - [ ] Download creates a sanitized `.md` filename based on batch volume and target ABV.
-- [ ] Tests cover Markdown content, copy/download source consistency, and representative UI behavior.
+- [ ] The planner facade exposes export UI state, including whether the current plan is valid, copy/download enabled state, filename, and Markdown preview content.
+- [ ] Copy and download actions are visible once a valid plan exists.
+- [ ] The full Markdown preview appears inside an expandable Export section by default on mobile; it may be visible by default in the desktop results column when space allows.
+- [ ] Tests cover Markdown content, copy/download source consistency, export view-model behavior, disabled/invalid export states, and representative rendered UI behavior.
 
 ## Blocked by
 

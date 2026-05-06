@@ -7,6 +7,11 @@ labels:
 user_stories:
   - 47
   - 48
+  - 62
+  - 63
+  - 65
+  - 68
+  - 70
 ---
 
 ## Parent
@@ -23,7 +28,10 @@ Add a standalone batch scaling tool that proportionally scales honey and optiona
 - [ ] Users can scale honey amount.
 - [ ] Users can optionally scale nutrient and fruit amounts.
 - [ ] Output uses the selected unit system.
-- [ ] Tests cover scale factor calculation, optional quantities, validation, and rendered output.
+- [ ] `/scale` is a focused route-level worksheet using the shared shell, navigation, global preferences, field components, result components, and its own facade.
+- [ ] The scale route facade owns form state, calls `@meadstep/core`, maps output into UI view models, and exposes validation state.
+- [ ] Invalid values show field-level error borders/messages and neutral invalid-result output.
+- [ ] Tests cover scale factor calculation, optional quantities, selected unit-system output, facade/view-model behavior, validation, and rendered routed output.
 
 ## Blocked by
 

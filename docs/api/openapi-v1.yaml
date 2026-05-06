@@ -1,0 +1,154 @@
+openapi: 3.1.0
+info:
+  title: MeadStep API
+  version: v1
+  description: Versioned MeadStep calculation API contract. The backend wraps @meadstep/core and does not own formula truth.
+servers:
+  - url: http://localhost:3000
+tags:
+  - name: Health
+  - name: Reference
+  - name: Planner
+  - name: Tools
+paths:
+  /healthz:
+    get:
+      tags: [Health]
+      summary: Liveness check
+      responses:
+        '200':
+          description: Backend process is alive.
+  /readyz:
+    get:
+      tags: [Health]
+      summary: Readiness check
+      responses:
+        '200':
+          description: Backend is configured and core calculations are available.
+  /api/v1/reference/yeasts:
+    get:
+      tags: [Reference]
+      summary: List curated yeast options
+      responses:
+        '200':
+          description: Curated yeast reference data.
+  /api/v1/reference/assumptions:
+    get:
+      tags: [Reference]
+      summary: List formula assumptions
+      responses:
+        '200':
+          description: Machine-readable formula assumptions and assumptions version.
+  /api/v1/reference/options:
+    get:
+      tags: [Reference]
+      summary: List API enum options
+      responses:
+        '200':
+          description: Unit systems, nitrogen requirements, warning severities, and other stable options.
+  /api/v1/planner/honey-only:
+    post:
+      tags: [Planner]
+      summary: Calculate a honey-only MeadStep planner result
+      responses:
+        '200':
+          description: Planner result with canonical metric data, selected-unit display data, warnings, and eventually Markdown.
+        '400':
+          description: Validation failed, invalid JSON, or malformed request.
+        '413':
+          description: Payload too large.
+  /api/v1/tools/honey-og:
+    post:
+      tags: [Tools]
+      summary: Calculate honey gravity contribution
+      responses:
+        '200':
+          description: Honey OG, Brix/Plato, and ABV potential result.
+  /api/v1/tools/gravity:
+    post:
+      tags: [Tools]
+      summary: Convert between SG and Brix/Plato
+      responses:
+        '200':
+          description: Gravity conversion result.
+  /api/v1/tools/abv:
+    post:
+      tags: [Tools]
+      summary: Calculate ABV or reverse-estimate FG
+      responses:
+        '200':
+          description: ABV tool result.
+  /api/v1/tools/sugar-break:
+    post:
+      tags: [Tools]
+      summary: Calculate 1/3 sugar break
+      responses:
+        '200':
+          description: Sugar break result.
+  /api/v1/tools/scale:
+    post:
+      tags: [Tools]
+      summary: Scale a simple recipe
+      responses:
+        '200':
+          description: Scale factor and scaled quantities.
+  /api/v1/tools/fruit-sugar:
+    post:
+      tags: [Tools]
+      summary: Estimate fruit sugar contribution
+      responses:
+        '200':
+          description: Fruit sugar and gravity contribution result.
+components:
+  schemas:
+    ApiMeta:
+      type: object
+      required: [apiVersion, requestId]
+      properties:
+        apiVersion:
+          type: string
+          const: v1
+        generatedAt:
+          type: string
+          format: date-time
+        assumptionsVersion:
+          type: string
+        requestId:
+          type: string
+    ApiError:
+      type: object
+      required: [code, message]
+      properties:
+        code:
+          type: string
+          enum:
+            - validation_failed
+            - not_found
+            - method_not_allowed
+            - invalid_json
+            - payload_too_large
+            - internal_error
+        message:
+          type: string
+        issues:
+          type: array
+          items:
+            type: object
+            required: [path, message]
+            properties:
+              path:
+                type: array
+                items:
+                  oneOf:
+                    - type: string
+                    - type: integer
+              message:
+                type: string
+    ErrorEnvelope:
+      type: object
+      required: [error, meta]
+      properties:
+        error:
+          $ref: '#/components/schemas/ApiError'
+        meta:
+          $ref: '#/components/schemas/ApiMeta'

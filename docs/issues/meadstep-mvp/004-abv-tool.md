@@ -7,6 +7,10 @@ labels:
 user_stories:
   - 43
   - 44
+  - 62
+  - 65
+  - 68
+  - 70
 ---
 
 ## Parent
@@ -23,7 +27,10 @@ Add a standalone ABV calculator that supports classic OG + FG to ABV and reverse
 - [ ] Users can estimate FG from OG and target ABV.
 - [ ] The calculator validates gravity and ABV ranges and presents plain error states.
 - [ ] The shared package owns both ABV formulas.
-- [ ] Tests cover classic ABV, reverse FG estimation, invalid inputs, and rendered UI output.
+- [ ] `/abv` is a focused route-level worksheet using the shared shell, navigation, preferences, field components, and result components.
+- [ ] The ABV route uses a facade that owns form state, calls `@meadstep/core`, maps results into UI view models, and exposes validation state.
+- [ ] Invalid fields show an error border and a small field-level message; invalid dependent output shows a neutral "enter valid values" state.
+- [ ] Tests cover classic ABV, reverse FG estimation, invalid inputs, facade/view-model behavior, and rendered routed UI output.
 
 ## Blocked by
 
