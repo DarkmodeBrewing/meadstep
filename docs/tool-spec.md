@@ -188,7 +188,7 @@ Freemium:
 * Keep formatting tight using Prettier
 * Monorepo
 * Frontend: Angular latest version (signals for reactive calculations)
-* Backend: Calculation formulas should live in API. Backend in Node, using typescript.
+* Backend: API should wrap the shared calculation package, not own formula truth. Backend in Node, using Typescript.
 * State: local-first, database backed later
 * Architecture:
 
@@ -227,5 +227,4 @@ This:
 * Deployed publicly
 
 ---
-
 
