@@ -2,9 +2,13 @@ import { describe, expect, it } from 'vitest';
 import {
   convertVolume,
   convertWeight,
+  estimateHoneyOriginalGravity,
+  estimatePotentialAbv,
+  gravityToBrix,
   honeyOnlyPlannerInputSchema,
   planHoneyOnlyBatch,
   planHoneyOnlyBatchForUnitSystem,
+  brixToGravity,
   type HoneyOnlyPlannerResult,
 } from './index';
 
@@ -76,5 +80,51 @@ describe('planHoneyOnlyBatchForUnitSystem', () => {
     expect(usResult.display.batchVolumeUnit).toBe('gallons');
     expect(usResult.display.honeyWeightUnit).toBe('pounds');
     expect(usResult.display.honeyWeight).toBeCloseTo(3.48, 2);
+  });
+});
+
+describe('estimateHoneyOriginalGravity', () => {
+  it('estimates honey OG, Brix/Plato, and potential ABV from canonical honey assumptions', () => {
+    const result = estimateHoneyOriginalGravity({
+      honeyKg: 1,
+      volumeLiters: 5,
+    });
+
+    expect(result.honeyKg).toBe(1);
+    expect(result.volumeLiters).toBe(5);
+    expect(result.assumptions.honeyPointsPerKgPerLiter).toBe(290);
+    expect(result.gravityPoints).toBeCloseTo(58, 2);
+    expect(result.estimatedOriginalGravity).toBeCloseTo(1.058, 3);
+    expect(result.estimatedBrix).toBeCloseTo(14.27, 2);
+    expect(result.potentialAbvPercent).toBeCloseTo(7.6, 1);
+  });
+
+  it('rejects non-positive honey and volume values', () => {
+    expect(() =>
+      estimateHoneyOriginalGravity({ honeyKg: 0, volumeLiters: 5 }),
+    ).toThrow();
+    expect(() =>
+      estimateHoneyOriginalGravity({ honeyKg: 1, volumeLiters: -1 }),
+    ).toThrow();
+  });
+});
+
+describe('gravity conversions', () => {
+  it('converts specific gravity to Brix/Plato and back', () => {
+    const brix = gravityToBrix(1.09);
+    const gravity = brixToGravity(brix);
+
+    expect(brix).toBeCloseTo(21.6, 1);
+    expect(gravity).toBeCloseTo(1.09, 3);
+  });
+
+  it('estimates potential ABV from original and final gravity', () => {
+    expect(estimatePotentialAbv({ originalGravity: 1.09 })).toBeCloseTo(
+      11.8,
+      1,
+    );
+    expect(
+      estimatePotentialAbv({ originalGravity: 1.09, finalGravity: 1.01 }),
+    ).toBeCloseTo(10.5, 1);
   });
 });

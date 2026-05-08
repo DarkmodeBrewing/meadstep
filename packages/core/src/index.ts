@@ -1,6 +1,8 @@
 import { z } from 'zod';
 
 const HONEY_GRAVITY_POINTS_PER_KG_PER_LITER = 290;
+const HONEY_PPG = 35;
+const HONEY_SUGAR_PERCENT = 82;
 const ABV_POINTS_FACTOR = 131.25;
 const ASSUMED_DRY_FINAL_GRAVITY = 1;
 const LITERS_PER_US_GALLON = 3.785411784;
@@ -90,6 +92,39 @@ export type HoneyOnlyPlannerUnitSystemResult = z.infer<
   typeof honeyOnlyPlannerUnitSystemResultSchema
 >;
 
+export const honeyOriginalGravityInputSchema = z.object({
+  honeyKg: z.number().positive(),
+  volumeLiters: z.number().positive(),
+});
+
+export const honeyOriginalGravityResultSchema = z.object({
+  honeyKg: z.number().positive(),
+  volumeLiters: z.number().positive(),
+  gravityPoints: z.number().positive(),
+  estimatedOriginalGravity: z.number().positive(),
+  estimatedBrix: z.number().positive(),
+  potentialAbvPercent: z.number().nonnegative(),
+  assumptions: z.object({
+    honeyPpg: z.number().positive(),
+    honeySugarPercent: z.number().positive(),
+    honeyPointsPerKgPerLiter: z.number().positive(),
+    finalGravity: z.number().positive(),
+  }),
+});
+
+export const potentialAbvInputSchema = z.object({
+  originalGravity: z.number().positive(),
+  finalGravity: z.number().positive().default(ASSUMED_DRY_FINAL_GRAVITY),
+});
+
+export type HoneyOriginalGravityInput = z.infer<
+  typeof honeyOriginalGravityInputSchema
+>;
+export type HoneyOriginalGravityResult = z.infer<
+  typeof honeyOriginalGravityResultSchema
+>;
+export type PotentialAbvInput = z.input<typeof potentialAbvInputSchema>;
+
 export function planHoneyOnlyBatch(
   input: HoneyOnlyPlannerInput,
 ): HoneyOnlyPlannerResult {
@@ -139,6 +174,58 @@ export function planHoneyOnlyBatchForUnitSystem(
       estimatedOriginalGravity: canonical.estimatedOriginalGravity,
       estimatedFinalGravity: canonical.estimatedFinalGravity,
       estimatedAbvPercent: canonical.estimatedAbvPercent,
+    },
+  });
+}
+
+export function gravityToBrix(specificGravity: number): number {
+  const gravity = z.number().positive().parse(specificGravity);
+
+  return (
+    182.4601 * gravity ** 3 -
+    775.6821 * gravity ** 2 +
+    1262.7794 * gravity -
+    669.5622
+  );
+}
+
+export function brixToGravity(brix: number): number {
+  const value = z.number().nonnegative().parse(brix);
+
+  return 1 + value / (258.6 - (value / 258.2) * 227.1);
+}
+
+export function estimatePotentialAbv(input: PotentialAbvInput): number {
+  const validatedInput = potentialAbvInputSchema.parse(input);
+
+  return (
+    (validatedInput.originalGravity - validatedInput.finalGravity) *
+    ABV_POINTS_FACTOR
+  );
+}
+
+export function estimateHoneyOriginalGravity(
+  input: HoneyOriginalGravityInput,
+): HoneyOriginalGravityResult {
+  const validatedInput = honeyOriginalGravityInputSchema.parse(input);
+  const gravityPoints =
+    (validatedInput.honeyKg * HONEY_GRAVITY_POINTS_PER_KG_PER_LITER) /
+    validatedInput.volumeLiters;
+  const estimatedOriginalGravity = 1 + gravityPoints / 1000;
+
+  return honeyOriginalGravityResultSchema.parse({
+    ...validatedInput,
+    gravityPoints,
+    estimatedOriginalGravity,
+    estimatedBrix: gravityToBrix(estimatedOriginalGravity),
+    potentialAbvPercent: estimatePotentialAbv({
+      originalGravity: estimatedOriginalGravity,
+    }),
+    assumptions: {
+      honeyPpg: HONEY_PPG,
+      honeySugarPercent: HONEY_SUGAR_PERCENT,
+      honeyPointsPerKgPerLiter: HONEY_GRAVITY_POINTS_PER_KG_PER_LITER,
+      finalGravity: ASSUMED_DRY_FINAL_GRAVITY,
     },
   });
 }
