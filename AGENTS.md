@@ -57,6 +57,7 @@ This is a single-context repo with central product and decision docs under `docs
 
 ## Git
 
+Always cut a feature branch for ongoing work and commit regulary or when appropriate
 When committing in this repository, always use:
 
 ```bash
