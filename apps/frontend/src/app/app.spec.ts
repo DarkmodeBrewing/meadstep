@@ -32,9 +32,61 @@ describe('App routing workflows', () => {
     const compiled = fixture.nativeElement as HTMLElement;
     expect(router.url).toBe('/planner');
     expect(compiled.textContent).toContain('Honey-only planner');
-    expect(compiled.textContent).toContain('Honey needed');
+    expect(compiled.textContent).toContain('Initial Must');
+    expect(compiled.textContent).toContain('Total honey needed');
     expect(compiled.textContent).toContain('EC-1118');
     expect(compiled.textContent).toContain('Comfortable yeast tolerance margin');
+  });
+
+  it('renders automatic and manual initial must planning with validation', async () => {
+    const router = TestBed.inject(Router);
+    const fixture = TestBed.createComponent(App);
+
+    await router.navigateByUrl('/planner');
+    fixture.detectChanges();
+    await fixture.whenStable();
+
+    const compiled = fixture.nativeElement as HTMLElement;
+    const targetAbvInput = compiled.querySelector<HTMLInputElement>('#target-abv-percent');
+    expect(compiled.textContent).toContain('1.091');
+    expect(compiled.textContent).toContain('0.00 kg');
+
+    targetAbvInput!.value = '18';
+    targetAbvInput!.dispatchEvent(new Event('input'));
+    fixture.detectChanges();
+    await fixture.whenStable();
+
+    expect(compiled.textContent).toContain('Automatic pitch gravity, capped at 1.110.');
+    expect(compiled.textContent).toContain('0.47 kg');
+    expect(compiled.textContent).toContain('Elevated initial gravity');
+    expect(compiled.textContent).toContain('Strong-mead fermentable load');
+
+    const manualModeControl = compiled.querySelector<HTMLInputElement>('#initial-og-mode-manual');
+    manualModeControl!.click();
+    fixture.detectChanges();
+    await fixture.whenStable();
+
+    const manualInitialOgInput = compiled.querySelector<HTMLInputElement>('#manual-initial-og');
+    expect(manualInitialOgInput).toBeTruthy();
+
+    manualInitialOgInput!.value = '1.095';
+    manualInitialOgInput!.dispatchEvent(new Event('input'));
+    fixture.detectChanges();
+    await fixture.whenStable();
+
+    expect(compiled.textContent).toContain('Manual initial pitch gravity.');
+    expect(compiled.textContent).toContain('0.73 kg');
+
+    manualInitialOgInput!.value = '1.2';
+    manualInitialOgInput!.dispatchEvent(new Event('input'));
+    fixture.detectChanges();
+    await fixture.whenStable();
+
+    expect(manualInitialOgInput!.getAttribute('aria-invalid')).toBe('true');
+    expect(compiled.textContent).toContain(
+      'Initial pitch OG cannot exceed the total equivalent OG of 1.137.',
+    );
+    expect(compiled.textContent).toContain('Enter valid values');
   });
 
   it('renders curated and custom yeast tolerance workflows', async () => {
@@ -256,11 +308,13 @@ describe('tool facades', () => {
 
     facade.setTargetAbvPercent(18);
     expect(facade.toleranceResult()?.level).toBe('high');
+    expect(facade.result()?.canonical.initialOriginalGravity).toBe(1.11);
+    expect(facade.initialMustViewModel().rows[1]?.value).toBe('0.47 kg');
 
     facade.setSelectedYeastId('d47');
     expect(facade.toleranceResult()?.level).toBe('severe');
     expect(facade.toleranceResult()?.estimatedToleranceLimitedFinalGravity).toBeCloseTo(1.03, 3);
-    expect(noticeService.all()).toEqual(facade.yeastNotices());
+    expect(noticeService.all()).toEqual([...facade.yeastNotices(), ...facade.gravityNotices()]);
 
     facade.setSelectedYeastId('custom');
     expect(facade.customYeastFieldErrors().name).toBe('Enter a yeast name.');
@@ -274,6 +328,47 @@ describe('tool facades', () => {
       alcoholTolerancePercent: 13,
       nitrogenRequirement: 'high',
     });
+  });
+
+  it('maps manual initial OG validation and gravity warnings into the worksheet', () => {
+    const facade = TestBed.inject(PlannerFacade);
+
+    facade.setTargetAbvPercent(18);
+    facade.setInitialOgMode('manual');
+    facade.setManualInitialOg(1.095);
+
+    expect(facade.result()?.canonical.initialOriginalGravity).toBe(1.095);
+    expect(facade.initialMustViewModel().rows[1]?.value).toBe('0.73 kg');
+
+    facade.setManualInitialOg(1.2);
+    expect(facade.fieldErrors().manualInitialOg).toBe(
+      'Initial pitch OG cannot exceed the total equivalent OG of 1.137.',
+    );
+    expect(facade.result()).toBeUndefined();
+    expect(facade.initialMustViewModel().valid).toBe(false);
+    expect(facade.initialMustViewModel().rows[0]?.value).toBe('Enter valid values');
+
+    facade.setTargetAbvPercent(20);
+    facade.setManualInitialOg(1.145);
+    expect(facade.gravityNotices().map((notice) => notice.id)).toEqual([
+      'initial_og_severe',
+      'total_og_high',
+    ]);
+  });
+
+  it('maps invalid setup fields to errors and neutral initial must output', () => {
+    const facade = TestBed.inject(PlannerFacade);
+
+    facade.setBatchVolume(0);
+    expect(facade.fieldErrors().batchVolume).toBe('Enter a batch volume above 0.');
+    expect(facade.initialMustViewModel().valid).toBe(false);
+
+    facade.setBatchVolume(5);
+    facade.setTargetAbvPercent(21);
+    expect(facade.fieldErrors().targetAbvPercent).toBe('Enter target ABV up to 20%.');
+    expect(facade.initialMustViewModel().rows).toEqual(
+      expect.arrayContaining([expect.objectContaining({ value: 'Enter valid values' })]),
+    );
   });
 
   it('maps ABV calculator modes to results and validation state', () => {

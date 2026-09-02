@@ -1,5 +1,10 @@
 import { Component, ElementRef, inject, viewChild } from '@angular/core';
-import type { NitrogenRequirement, UnitSystem, YeastSelectionId } from '@meadstep/core';
+import type {
+  InitialOgMode,
+  NitrogenRequirement,
+  UnitSystem,
+  YeastSelectionId,
+} from '@meadstep/core';
 import { NoticesComponent } from '../../shared/ui/notices.component';
 import { UiFieldComponent } from '../../shared/ui/field.component';
 import { ResultRowsComponent } from '../../shared/ui/result-rows.component';
@@ -26,107 +31,219 @@ import { PlannerFacade } from './planner.facade';
     <app-ui-section
       eyebrow="Honey-only planner"
       title="MeadStep"
-      description="Build a quick honey-only batch plan from volume and target ABV."
+      description="Build a practical initial must from batch volume, target ABV, and yeast."
     >
-      <app-toggle-group
-        idPrefix="unit-system"
-        label="Units"
-        [options]="unitOptions"
-        [value]="facade.unitSystem()"
-        (valueChange)="facade.setUnitSystem($event)"
-      />
-      <div class="controls" aria-label="Planner inputs">
-        <app-ui-field
-          fieldId="batch-volume"
-          label="Batch volume"
-          [value]="facade.batchVolume()"
-          [unit]="facade.volumeUnit()"
-          min="1"
-          step="0.25"
-          (valueChange)="facade.setBatchVolume($event)"
-        />
-        <app-ui-field
-          fieldId="target-abv-percent"
-          label="Target ABV"
-          [value]="facade.targetAbvPercent()"
-          unit="%"
-          min="1"
-          max="20"
-          step="0.5"
-          (valueChange)="facade.setTargetAbvPercent($event)"
-        />
-        <app-select-field
-          fieldId="yeast-selection"
-          label="Yeast"
-          [value]="facade.selectedYeastId()"
-          [options]="facade.yeastOptions"
-          [helper]="facade.selectedYeastHelper()"
-          (valueChange)="selectYeast($event)"
-        />
+      <div class="worksheet">
+        <div class="input-column">
+          <section class="worksheet-section" aria-labelledby="setup-heading">
+            <header class="section-heading">
+              <p>Step 1</p>
+              <h2 id="setup-heading">Setup</h2>
+            </header>
+
+            <app-toggle-group
+              idPrefix="unit-system"
+              label="Units"
+              [options]="unitOptions"
+              [value]="facade.setupViewModel().unitSystem"
+              (valueChange)="facade.setUnitSystem($event)"
+            />
+
+            <div class="controls" aria-label="Planner inputs">
+              <app-ui-field
+                fieldId="batch-volume"
+                label="Batch volume"
+                [value]="facade.setupViewModel().batchVolume"
+                [unit]="facade.setupViewModel().volumeUnit"
+                min="0.25"
+                step="0.25"
+                [error]="facade.fieldErrors().batchVolume"
+                (valueChange)="facade.setBatchVolume($event)"
+              />
+              <app-ui-field
+                fieldId="target-abv-percent"
+                label="Target ABV"
+                [value]="facade.setupViewModel().targetAbvPercent"
+                unit="%"
+                min="0.1"
+                max="20"
+                step="0.5"
+                [error]="facade.fieldErrors().targetAbvPercent"
+                (valueChange)="facade.setTargetAbvPercent($event)"
+              />
+              <app-select-field
+                fieldId="yeast-selection"
+                label="Yeast"
+                [value]="facade.selectedYeastId()"
+                [options]="facade.yeastOptions"
+                [helper]="facade.setupViewModel().selectedYeastHelper"
+                (valueChange)="selectYeast($event)"
+              />
+            </div>
+
+            <div class="inline-notices" aria-label="Yeast tolerance notice">
+              <app-notices [notices]="facade.yeastNotices()" />
+            </div>
+
+            <details #advanced class="advanced">
+              <summary>Advanced</summary>
+
+              <div class="advanced-content">
+                <app-toggle-group
+                  idPrefix="initial-og-mode"
+                  label="Initial pitch OG strategy"
+                  [options]="initialOgModeOptions"
+                  [value]="facade.initialOgMode()"
+                  (valueChange)="facade.setInitialOgMode($event)"
+                />
+
+                @if (facade.initialOgMode() === 'manual') {
+                  <app-ui-field
+                    fieldId="manual-initial-og"
+                    label="Manual initial pitch OG"
+                    [value]="facade.manualInitialOg()"
+                    unit="SG"
+                    min="1.001"
+                    max="1.300"
+                    step="0.001"
+                    helper="Controls only the gravity at pitch; total fermentable load still comes from target ABV."
+                    [error]="facade.fieldErrors().manualInitialOg"
+                    (valueChange)="facade.setManualInitialOg($event)"
+                  />
+                }
+
+                @if (facade.selectedYeastId() === 'custom') {
+                  <div class="controls custom-yeast" aria-label="Custom yeast inputs">
+                    <app-text-field
+                      fieldId="custom-yeast-name"
+                      label="Custom yeast name"
+                      [value]="facade.customYeastName()"
+                      [error]="facade.customYeastFieldErrors().name"
+                      (valueChange)="facade.setCustomYeastName($event)"
+                    />
+                    <app-ui-field
+                      fieldId="custom-yeast-tolerance"
+                      label="Alcohol tolerance"
+                      [value]="facade.customYeastTolerancePercent()"
+                      unit="%"
+                      min="0.1"
+                      max="30"
+                      step="0.5"
+                      [error]="facade.customYeastFieldErrors().alcoholTolerancePercent"
+                      (valueChange)="facade.setCustomYeastTolerancePercent($event)"
+                    />
+                    <app-select-field
+                      fieldId="custom-yeast-nitrogen"
+                      label="Nitrogen requirement"
+                      [value]="facade.customYeastNitrogenRequirement()"
+                      [options]="nitrogenOptions"
+                      (valueChange)="facade.setCustomYeastNitrogenRequirement($event)"
+                    />
+                  </div>
+                }
+              </div>
+            </details>
+          </section>
+        </div>
+
+        <div class="results-column">
+          <section class="worksheet-section" aria-labelledby="initial-must-heading">
+            <header class="section-heading">
+              <p>Step 2</p>
+              <h2 id="initial-must-heading">Initial Must</h2>
+              <span>Honey to mix now and reserve for later.</span>
+            </header>
+
+            <div class="inline-notices" aria-label="Initial must gravity notices">
+              <app-notices [notices]="facade.initialMustViewModel().notices" />
+            </div>
+
+            <app-result-rows [rows]="facade.initialMustViewModel().rows" />
+          </section>
+
+          @if (facade.summaryNotices().length) {
+            <section class="notice-summary worksheet-section" aria-label="Active worksheet summary">
+              <h2>Active worksheet notices</h2>
+              <app-notices [notices]="facade.summaryNotices()" />
+            </section>
+          }
+
+          <section class="plan-output worksheet-section" aria-label="Generated planner output">
+            <h2>Brew plan</h2>
+            <pre id="planner-output">{{ facade.plannerOutput() }}</pre>
+          </section>
+        </div>
       </div>
-
-      <details #advanced class="advanced">
-        <summary>Advanced</summary>
-        @if (facade.selectedYeastId() === 'custom') {
-          <div class="controls custom-yeast" aria-label="Custom yeast inputs">
-            <app-text-field
-              fieldId="custom-yeast-name"
-              label="Custom yeast name"
-              [value]="facade.customYeastName()"
-              [error]="facade.customYeastFieldErrors().name"
-              (valueChange)="facade.setCustomYeastName($event)"
-            />
-            <app-ui-field
-              fieldId="custom-yeast-tolerance"
-              label="Alcohol tolerance"
-              [value]="facade.customYeastTolerancePercent()"
-              unit="%"
-              min="0.1"
-              max="30"
-              step="0.5"
-              [error]="facade.customYeastFieldErrors().alcoholTolerancePercent"
-              (valueChange)="facade.setCustomYeastTolerancePercent($event)"
-            />
-            <app-select-field
-              fieldId="custom-yeast-nitrogen"
-              label="Nitrogen requirement"
-              [value]="facade.customYeastNitrogenRequirement()"
-              [options]="nitrogenOptions"
-              (valueChange)="facade.setCustomYeastNitrogenRequirement($event)"
-            />
-          </div>
-        } @else {
-          <p>Choose “Custom yeast…” above to enter your own tolerance and nitrogen requirement.</p>
-        }
-      </details>
-
-      <div class="inline-notices" aria-label="Yeast tolerance notice">
-        <app-notices [notices]="facade.yeastNotices()" />
-      </div>
-      <app-result-rows [rows]="facade.resultRows()" />
-
-      @if (facade.summaryNotices().length) {
-        <section class="notice-summary" aria-label="Active worksheet summary">
-          <h2>Active worksheet notices</h2>
-          <app-notices [notices]="facade.summaryNotices()" />
-        </section>
-      }
-
-      <section class="plan-output" aria-label="Generated planner output">
-        <h2>Brew plan</h2>
-        <pre id="planner-output">{{ facade.plannerOutput() }}</pre>
-      </section>
     </app-ui-section>
   `,
   styles: `
-    .controls {
+    .worksheet {
+      display: grid;
+      gap: 1rem;
+    }
+
+    .input-column,
+    .results-column {
+      min-width: 0;
+    }
+
+    .results-column {
+      display: grid;
+      align-content: start;
+      gap: 1rem;
+    }
+
+    .worksheet-section {
+      padding: 1rem;
+      border: 1px solid var(--border);
+      border-radius: 0.625rem;
+      background: var(--surface-strong);
+    }
+
+    .section-heading {
+      margin-bottom: 1rem;
+    }
+
+    .section-heading p,
+    .section-heading h2,
+    .section-heading span,
+    .notice-summary h2,
+    .plan-output h2 {
+      margin: 0;
+    }
+
+    .section-heading p {
+      color: var(--accent);
+      font-size: 0.75rem;
+      font-weight: 900;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }
+
+    .section-heading h2,
+    .notice-summary h2,
+    .plan-output h2 {
+      font-size: 1.25rem;
+    }
+
+    .section-heading span {
+      display: block;
+      margin-top: 0.25rem;
+      color: var(--muted);
+      line-height: 1.4;
+    }
+
+    .controls,
+    .advanced-content {
       display: grid;
       gap: 0.75rem;
+    }
+
+    .controls {
       margin-bottom: 1rem;
     }
 
     .advanced {
-      margin: 0 0 1rem;
       padding: 0.875rem 1rem;
       border: 1px solid var(--border);
       border-radius: 0.5rem;
@@ -138,20 +255,19 @@ import { PlannerFacade } from './planner.facade';
       font-weight: 800;
     }
 
-    .advanced p {
-      margin: 0.75rem 0 0;
-      color: var(--muted);
-      line-height: 1.4;
+    .advanced-content {
+      margin-top: 0.875rem;
     }
 
     .custom-yeast {
-      margin: 0.75rem 0 0;
+      margin: 0;
+      padding-top: 0.875rem;
+      border-top: 1px solid var(--border);
     }
 
     .notice-summary h2,
     .plan-output h2 {
-      margin: 0 0 0.5rem;
-      font-size: 1.25rem;
+      margin-bottom: 0.75rem;
     }
 
     pre {
@@ -165,6 +281,18 @@ import { PlannerFacade } from './planner.facade';
       line-height: 1.5;
       white-space: pre-wrap;
     }
+
+    @media (min-width: 58rem) {
+      .worksheet {
+        grid-template-columns: minmax(20rem, 0.8fr) minmax(0, 1.2fr);
+        align-items: start;
+      }
+
+      .input-column {
+        position: sticky;
+        top: 1rem;
+      }
+    }
   `,
 })
 export class PlannerScreenComponent {
@@ -173,6 +301,10 @@ export class PlannerScreenComponent {
   protected readonly unitOptions: ToggleOption<UnitSystem>[] = [
     { label: 'Metric', value: 'metric' },
     { label: 'US', value: 'us' },
+  ];
+  protected readonly initialOgModeOptions: ToggleOption<InitialOgMode>[] = [
+    { label: 'Automatic', value: 'automatic' },
+    { label: 'Manual', value: 'manual' },
   ];
   protected readonly nitrogenOptions: SelectOption<NitrogenRequirement>[] = [
     { label: 'Low', value: 'low' },
