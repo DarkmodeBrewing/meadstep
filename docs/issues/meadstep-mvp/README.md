@@ -11,7 +11,7 @@ These issues are intentionally stored in the repo instead of GitHub. Treat `stat
 3. `003-honey-og-gravity-tool.md` - honey OG and gravity conversion tool, plus the initial route shell, feature-first structure, preferences, notice model, and shared UI primitives needed before more tools are added. Implemented.
 4. `004-abv-tool.md` - classic and reverse ABV tool. Implemented.
 5. `005-yeast-tolerance-warnings.md` - curated/custom yeast and tolerance warnings. Implemented.
-6. `006-honey-planner-initial-og.md` - initial honey plan with auto cap and manual override.
+6. `006-honey-planner-initial-og.md` - initial honey plan with auto cap and manual override. Implemented.
 7. `007-step-feeding-schedule.md` - step-feed count, feed caps, and milestones.
 8. `008-tosna-sugar-break.md` - TOSNA / Fermaid O and 1/3 sugar break.
 9. `009-markdown-export.md` - copy and download Markdown brew plan.
@@ -32,4 +32,4 @@ These issues are intentionally stored in the repo instead of GitHub. Treat `stat
   -> 011
 ```
 
-Issues `001` through `005` have been implemented. Remaining slices are marked AFK because the PRD and decision log resolve the major product, formula, UI, and Angular architecture decisions for MVP.
+Issues `001` through `006` have been implemented. Remaining slices are marked AFK because the PRD and decision log resolve the major product, formula, UI, and Angular architecture decisions for MVP.
