@@ -1,16 +1,19 @@
 import { computed, inject, Injectable, signal } from '@angular/core';
 import {
   BUILT_IN_YEASTS,
+  convertVolume,
   createCustomYeast,
   customYeastInputSchema,
   CUSTOM_YEAST_ID,
   DEFAULT_BUILT_IN_YEAST_ID,
   evaluateYeastTolerance,
   getBuiltInYeast,
-  MAX_CALCULATOR_ABV_PERCENT,
+  honeyOnlyPlannerUnitSystemInputSchema,
+  initialOgModeSchema,
   planHoneyOnlyBatchForUnitSystem,
   yeastSelectionIdSchema,
-  convertVolume,
+  type HoneyOnlyPlannerUnitSystemResult,
+  type InitialOgMode,
   type NitrogenRequirement,
   type UnitSystem,
   type YeastProfile,
@@ -21,12 +24,34 @@ import { NoticeService } from '../../shared/notices/notice.service';
 import { PreferencesService } from '../../shared/preferences/preferences.service';
 import type { ResultRow, SelectOption } from '../../shared/ui/ui.models';
 
+export interface PlannerFieldErrors {
+  batchVolume?: string;
+  targetAbvPercent?: string;
+  manualInitialOg?: string;
+}
+
 export interface CustomYeastFieldErrors {
   name?: string;
   alcoholTolerancePercent?: string;
 }
 
+export interface PlannerSetupViewModel {
+  batchVolume: number;
+  volumeUnit: 'L' | 'gal';
+  targetAbvPercent: number;
+  unitSystem: UnitSystem;
+  selectedYeastName: string;
+  selectedYeastHelper: string;
+}
+
+export interface PlannerInitialMustViewModel {
+  valid: boolean;
+  rows: ResultRow[];
+  notices: Notice[];
+}
+
 const YEAST_NOTICE_SCOPE = 'planner:yeast-tolerance';
+const GRAVITY_NOTICE_SCOPE = 'planner:gravity';
 
 @Injectable({ providedIn: 'root' })
 export class PlannerFacade {
@@ -36,6 +61,8 @@ export class PlannerFacade {
   readonly batchVolume = signal(5);
   readonly targetAbvPercent = signal(12);
   readonly unitSystem = this.preferences.unitSystem;
+  readonly initialOgMode = signal<InitialOgMode>('automatic');
+  readonly manualInitialOg = signal(1.1);
   readonly selectedYeastId = signal<YeastSelectionId>(DEFAULT_BUILT_IN_YEAST_ID);
   readonly customYeastName = signal('');
   readonly customYeastTolerancePercent = signal(14);
@@ -48,6 +75,44 @@ export class PlannerFacade {
     })),
     { label: 'Custom yeast…', value: CUSTOM_YEAST_ID },
   ];
+
+  private readonly plannerInputValidation = computed(() =>
+    honeyOnlyPlannerUnitSystemInputSchema.safeParse({
+      unitSystem: this.unitSystem(),
+      batchVolume: this.batchVolume(),
+      targetAbvPercent: this.targetAbvPercent(),
+      initialOgMode: this.initialOgMode(),
+      manualInitialOg: this.initialOgMode() === 'manual' ? this.manualInitialOg() : undefined,
+    }),
+  );
+
+  readonly fieldErrors = computed<PlannerFieldErrors>(() => {
+    const validation = this.plannerInputValidation();
+
+    if (validation.success) {
+      return {};
+    }
+
+    const errors: PlannerFieldErrors = {};
+
+    for (const issue of validation.error.issues) {
+      const field = issue.path[0];
+
+      if (field === 'batchVolume') {
+        errors.batchVolume = issue.message;
+      }
+
+      if (field === 'targetAbvPercent') {
+        errors.targetAbvPercent = issue.message;
+      }
+
+      if (field === 'manualInitialOg') {
+        errors.manualInitialOg = issue.message;
+      }
+    }
+
+    return errors;
+  });
 
   readonly customYeastFieldErrors = computed<CustomYeastFieldErrors>(() => {
     const errors: CustomYeastFieldErrors = {};
@@ -93,25 +158,24 @@ export class PlannerFacade {
     return parsed.success ? createCustomYeast(parsed.data) : undefined;
   });
 
-  readonly result = computed(() =>
-    planHoneyOnlyBatchForUnitSystem({
-      unitSystem: this.unitSystem(),
-      batchVolume: this.batchVolume(),
-      targetAbvPercent: this.targetAbvPercent(),
-    }),
-  );
+  readonly result = computed<HoneyOnlyPlannerUnitSystemResult | undefined>(() => {
+    const validation = this.plannerInputValidation();
+
+    return validation.success ? planHoneyOnlyBatchForUnitSystem(validation.data) : undefined;
+  });
 
   readonly toleranceResult = computed(() => {
     const yeast = this.selectedYeast();
+    const result = this.result();
 
-    if (!yeast) {
+    if (!yeast || !result) {
       return undefined;
     }
 
     return evaluateYeastTolerance({
       yeast,
-      targetAbvPercent: this.targetAbvPercent(),
-      totalEquivalentOg: this.result().canonical.estimatedOriginalGravity,
+      targetAbvPercent: result.canonical.targetAbvPercent,
+      totalEquivalentOg: result.canonical.totalEquivalentOriginalGravity,
     });
   });
 
@@ -135,11 +199,21 @@ export class PlannerFacade {
     ];
   });
 
+  readonly gravityNotices = computed<Notice[]>(() =>
+    (this.result()?.canonical.gravityWarnings ?? []).map((warning) => ({
+      id: warning.code,
+      tone: warning.severity,
+      title: warning.title,
+      message: warning.message,
+      action: warning.action,
+      source: GRAVITY_NOTICE_SCOPE,
+      placement: 'both',
+    })),
+  );
+
   readonly summaryNotices = this.noticeService.all;
 
-  readonly volumeUnit = computed(() =>
-    this.result().display.batchVolumeUnit === 'gallons' ? 'gal' : 'L',
-  );
+  readonly volumeUnit = computed<'L' | 'gal'>(() => (this.unitSystem() === 'us' ? 'gal' : 'L'));
 
   readonly selectedYeastHelper = computed(() => {
     const yeast = this.selectedYeast();
@@ -151,55 +225,104 @@ export class PlannerFacade {
     return `${yeast.alcoholTolerancePercent.toFixed(1)}% tolerance · ${yeast.nitrogenRequirement} nitrogen requirement`;
   });
 
-  readonly resultRows = computed<ResultRow[]>(() => {
-    const display = this.result().display;
-    const honeyUnit = display.honeyWeightUnit === 'pounds' ? 'lb' : 'kg';
-    const yeast = this.selectedYeast();
+  readonly setupViewModel = computed<PlannerSetupViewModel>(() => ({
+    batchVolume: this.batchVolume(),
+    volumeUnit: this.volumeUnit(),
+    targetAbvPercent: this.targetAbvPercent(),
+    unitSystem: this.unitSystem(),
+    selectedYeastName: this.selectedYeast()?.name ?? 'Enter valid values',
+    selectedYeastHelper: this.selectedYeastHelper(),
+  }));
 
-    return [
-      {
-        label: 'Honey needed',
-        value: `${display.honeyWeight.toFixed(2)} ${honeyUnit}`,
-      },
-      {
-        label: 'Estimated OG',
-        value: display.estimatedOriginalGravity.toFixed(3),
-      },
-      {
-        label: 'Estimated FG',
-        value: display.estimatedFinalGravity.toFixed(3),
-      },
-      {
-        label: 'Estimated ABV',
-        value: `${display.estimatedAbvPercent.toFixed(1)}%`,
-      },
-      yeast
-        ? {
-            label: 'Selected yeast',
-            value: yeast.name,
-            helper: `${yeast.alcoholTolerancePercent.toFixed(1)}% tolerance · ${yeast.nitrogenRequirement} nitrogen requirement`,
-          }
-        : {
-            label: 'Selected yeast',
-            value: 'Enter valid values',
-            helper: 'Complete the custom yeast fields in Advanced.',
-          },
-    ];
+  readonly initialMustViewModel = computed<PlannerInitialMustViewModel>(() => {
+    const result = this.result();
+
+    if (!result) {
+      return {
+        valid: false,
+        notices: [],
+        rows: this.neutralInitialMustRows(),
+      };
+    }
+
+    const display = result.display;
+    const honeyUnit = display.honeyWeightUnit === 'pounds' ? 'lb' : 'kg';
+    const hasRemainingHoney = display.remainingHoneyWeight > 0.000_001;
+
+    return {
+      valid: true,
+      notices: this.gravityNotices(),
+      rows: [
+        {
+          label: 'Initial honey',
+          value: `${display.initialHoneyWeight.toFixed(2)} ${honeyUnit}`,
+          helper: 'Add this amount before pitching the yeast.',
+        },
+        {
+          label: 'Remaining honey',
+          value: `${display.remainingHoneyWeight.toFixed(2)} ${honeyUnit}`,
+          helper: hasRemainingHoney
+            ? 'Reserve this amount for step feeding.'
+            : 'No step feeding is needed for this gravity.',
+        },
+        {
+          label: 'Initial OG',
+          value: display.initialOriginalGravity.toFixed(3),
+          helper:
+            result.canonical.initialOgMode === 'automatic'
+              ? `Automatic pitch gravity, capped at ${result.canonical.automaticInitialOgCap.toFixed(3)}.`
+              : 'Manual initial pitch gravity.',
+        },
+        {
+          label: 'Total equivalent OG',
+          value: display.totalEquivalentOriginalGravity.toFixed(3),
+          helper: 'Theoretical OG if all planned honey were added at once.',
+        },
+        {
+          label: 'Total honey needed',
+          value: `${display.totalHoneyWeight.toFixed(2)} ${honeyUnit}`,
+        },
+        {
+          label: 'Estimated ABV',
+          value: `${display.estimatedAbvPercent.toFixed(1)}%`,
+          helper: `Assumes fermentation reaches ${display.estimatedFinalGravity.toFixed(3)} FG.`,
+        },
+      ],
+    };
   });
+
+  readonly resultRows = computed<ResultRow[]>(() => [
+    ...this.initialMustViewModel().rows,
+    {
+      label: 'Selected yeast',
+      value: this.setupViewModel().selectedYeastName,
+      helper: this.setupViewModel().selectedYeastHelper,
+    },
+  ]);
 
   readonly plannerOutput = computed(() => {
     const result = this.result();
-    const honeyNeeded = this.resultRows()[0]?.value ?? '';
+
+    if (!result) {
+      return 'Enter valid planner values to generate a brew plan.';
+    }
+
+    const display = result.display;
+    const honeyUnit = display.honeyWeightUnit === 'pounds' ? 'lb' : 'kg';
     const yeast = this.selectedYeast();
     const tolerance = this.toleranceResult();
 
     return [
       '# MeadStep honey-only plan',
-      `Batch volume: ${result.display.batchVolume.toFixed(2)} ${this.volumeUnit()}`,
-      `Honey needed: ${honeyNeeded}`,
-      `Estimated OG: ${result.display.estimatedOriginalGravity.toFixed(3)}`,
-      `Estimated FG: ${result.display.estimatedFinalGravity.toFixed(3)}`,
-      `Estimated ABV: ${result.display.estimatedAbvPercent.toFixed(1)}%`,
+      `Batch volume: ${display.batchVolume.toFixed(2)} ${this.volumeUnit()}`,
+      `Target ABV: ${result.canonical.targetAbvPercent.toFixed(1)}%`,
+      `Initial OG: ${display.initialOriginalGravity.toFixed(3)}`,
+      `Total equivalent OG: ${display.totalEquivalentOriginalGravity.toFixed(3)}`,
+      `Initial honey: ${display.initialHoneyWeight.toFixed(2)} ${honeyUnit}`,
+      `Remaining step-feed honey: ${display.remainingHoneyWeight.toFixed(2)} ${honeyUnit}`,
+      `Total honey: ${display.totalHoneyWeight.toFixed(2)} ${honeyUnit}`,
+      `Estimated FG: ${display.estimatedFinalGravity.toFixed(3)}`,
+      `Estimated ABV: ${display.estimatedAbvPercent.toFixed(1)}%`,
       yeast
         ? `Yeast: ${yeast.brand} ${yeast.name} (${yeast.alcoholTolerancePercent.toFixed(1)}% tolerance, ${yeast.nitrogenRequirement} nitrogen requirement)`
         : 'Yeast: Enter valid custom yeast values.',
@@ -214,21 +337,17 @@ export class PlannerFacade {
   });
 
   constructor() {
-    this.syncYeastNotices();
+    this.syncNotices();
   }
 
   setBatchVolume(value: number): void {
-    if (Number.isFinite(value) && value > 0) {
-      this.batchVolume.set(value);
-      this.syncYeastNotices();
-    }
+    this.batchVolume.set(value);
+    this.syncNotices();
   }
 
   setTargetAbvPercent(value: number): void {
-    if (Number.isFinite(value) && value > 0 && value <= 20) {
-      this.targetAbvPercent.set(value);
-      this.syncYeastNotices();
-    }
+    this.targetAbvPercent.set(value);
+    this.syncNotices();
   }
 
   setUnitSystem(unitSystem: UnitSystem): void {
@@ -243,30 +362,56 @@ export class PlannerFacade {
 
       this.batchVolume.set(nextBatchVolume);
       this.preferences.setUnitSystem(unitSystem);
+      this.syncNotices();
     }
+  }
+
+  setInitialOgMode(value: InitialOgMode): void {
+    this.initialOgMode.set(initialOgModeSchema.parse(value));
+    this.syncNotices();
+  }
+
+  setManualInitialOg(value: number): void {
+    this.manualInitialOg.set(value);
+    this.syncNotices();
   }
 
   setSelectedYeastId(value: YeastSelectionId): void {
     this.selectedYeastId.set(yeastSelectionIdSchema.parse(value));
-    this.syncYeastNotices();
+    this.syncNotices();
   }
 
   setCustomYeastName(value: string): void {
     this.customYeastName.set(value);
-    this.syncYeastNotices();
+    this.syncNotices();
   }
 
   setCustomYeastTolerancePercent(value: number): void {
     this.customYeastTolerancePercent.set(value);
-    this.syncYeastNotices();
+    this.syncNotices();
   }
 
   setCustomYeastNitrogenRequirement(value: NitrogenRequirement): void {
     this.customYeastNitrogenRequirement.set(value);
-    this.syncYeastNotices();
+    this.syncNotices();
   }
 
-  private syncYeastNotices(): void {
+  private neutralInitialMustRows(): ResultRow[] {
+    return [
+      'Initial honey',
+      'Remaining honey',
+      'Initial OG',
+      'Total equivalent OG',
+      'Total honey needed',
+      'Estimated ABV',
+    ].map((label) => ({
+      label,
+      value: 'Enter valid values',
+    }));
+  }
+
+  private syncNotices(): void {
     this.noticeService.set(YEAST_NOTICE_SCOPE, this.yeastNotices());
+    this.noticeService.set(GRAVITY_NOTICE_SCOPE, this.gravityNotices());
   }
 }

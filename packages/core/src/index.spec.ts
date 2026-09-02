@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  AUTOMATIC_INITIAL_OG_CAP,
   BUILT_IN_YEASTS,
   calculateAbv,
   convertVolume,
@@ -9,6 +10,7 @@ import {
   estimateFinalGravityForAbv,
   estimateHoneyOriginalGravity,
   estimatePotentialAbv,
+  evaluatePlannerGravityWarnings,
   evaluateYeastTolerance,
   getBuiltInYeast,
   gravityToBrix,
@@ -32,7 +34,7 @@ describe('unit conversions', () => {
 });
 
 describe('planHoneyOnlyBatch', () => {
-  it('validates inputs and plans a minimal honey-only batch from target ABV', () => {
+  it('keeps a normal-gravity batch entirely in the initial must', () => {
     const input = honeyOnlyPlannerInputSchema.parse({
       batchVolumeLiters: 5,
       targetAbvPercent: 12,
@@ -42,10 +44,67 @@ describe('planHoneyOnlyBatch', () => {
 
     expect(result.batchVolumeLiters).toBe(5);
     expect(result.targetAbvPercent).toBe(12);
-    expect(result.honeyKg).toBeCloseTo(1.58, 2);
-    expect(result.estimatedOriginalGravity).toBeCloseTo(1.091, 3);
+    expect(result.initialOgMode).toBe('automatic');
+    expect(result.totalHoneyKg).toBeCloseTo(1.58, 2);
+    expect(result.initialHoneyKg).toBeCloseTo(result.totalHoneyKg, 9);
+    expect(result.remainingHoneyKg).toBe(0);
+    expect(result.initialOriginalGravity).toBeCloseTo(1.091, 3);
+    expect(result.totalEquivalentOriginalGravity).toBeCloseTo(1.091, 3);
     expect(result.estimatedFinalGravity).toBe(1);
     expect(result.estimatedAbvPercent).toBeCloseTo(12, 1);
+    expect(result.gravityWarnings).toEqual([]);
+  });
+
+  it('caps automatic initial OG and reserves excess honey for step feeding', () => {
+    const result = planHoneyOnlyBatch({
+      batchVolumeLiters: 5,
+      targetAbvPercent: 18,
+    });
+
+    expect(result.initialOriginalGravity).toBe(AUTOMATIC_INITIAL_OG_CAP);
+    expect(result.totalEquivalentOriginalGravity).toBeCloseTo(1.137, 3);
+    expect(result.initialHoneyKg).toBeCloseTo(1.897, 3);
+    expect(result.totalHoneyKg).toBeCloseTo(2.365, 3);
+    expect(result.remainingHoneyKg).toBeCloseTo(0.468, 3);
+    expect(result.gravityWarnings.map((warning) => warning.code)).toEqual([
+      'initial_og_moderate',
+      'total_og_strong',
+    ]);
+  });
+
+  it('uses a manual initial pitch OG and recalculates the honey split', () => {
+    const result = planHoneyOnlyBatch({
+      batchVolumeLiters: 5,
+      targetAbvPercent: 18,
+      initialOgMode: 'manual',
+      manualInitialOg: 1.095,
+    });
+
+    expect(result.initialOgMode).toBe('manual');
+    expect(result.initialOriginalGravity).toBe(1.095);
+    expect(result.initialHoneyKg).toBeCloseTo(1.638, 3);
+    expect(result.remainingHoneyKg).toBeCloseTo(0.727, 3);
+  });
+
+  it('rejects missing or impossible manual initial OG values', () => {
+    expect(() =>
+      planHoneyOnlyBatch({
+        batchVolumeLiters: 5,
+        targetAbvPercent: 12,
+        initialOgMode: 'manual',
+      }),
+    ).toThrow('Enter an initial pitch OG.');
+
+    expect(() =>
+      planHoneyOnlyBatch({
+        batchVolumeLiters: 5,
+        targetAbvPercent: 12,
+        initialOgMode: 'manual',
+        manualInitialOg: 1.11,
+      }),
+    ).toThrow(
+      'Initial pitch OG cannot exceed the total equivalent OG of 1.091.',
+    );
   });
 });
 
@@ -66,28 +125,66 @@ describe('planHoneyOnlyBatchForUnitSystem', () => {
       metricResult.canonical.batchVolumeLiters,
       9,
     );
-    expect(usResult.canonical.honeyKg).toBeCloseTo(
-      metricResult.canonical.honeyKg,
+    expect(usResult.canonical.totalHoneyKg).toBeCloseTo(
+      metricResult.canonical.totalHoneyKg,
       9,
     );
-    expect(usResult.canonical.estimatedOriginalGravity).toBeCloseTo(
-      metricResult.canonical.estimatedOriginalGravity,
+    expect(usResult.canonical.totalEquivalentOriginalGravity).toBeCloseTo(
+      metricResult.canonical.totalEquivalentOriginalGravity,
       9,
     );
 
     expect(metricResult.display.batchVolume).toBeCloseTo(5, 9);
     expect(metricResult.display.batchVolumeUnit).toBe('liters');
     expect(metricResult.display.honeyWeightUnit).toBe('kilograms');
-    expect(metricResult.display.honeyWeight).toBeCloseTo(
-      metricResult.canonical.honeyKg,
+    expect(metricResult.display.totalHoneyWeight).toBeCloseTo(
+      metricResult.canonical.totalHoneyKg,
       9,
     );
+    expect(metricResult.display.remainingHoneyWeight).toBe(0);
 
     expect(usResult.display.batchVolume).toBeCloseTo(1.3208602617907, 9);
     expect(usResult.display.batchVolumeUnit).toBe('gallons');
     expect(usResult.display.honeyWeightUnit).toBe('pounds');
-    expect(usResult.display.honeyWeight).toBeCloseTo(3.48, 2);
+    expect(usResult.display.totalHoneyWeight).toBeCloseTo(3.48, 2);
   });
+});
+
+describe('planner gravity warnings', () => {
+  it.each([
+    [1.1, undefined],
+    [1.101, 'initial_og_moderate'],
+    [1.121, 'initial_og_high'],
+    [1.141, 'initial_og_severe'],
+  ] as const)('maps initial OG %s to %s', (initialOriginalGravity, code) => {
+    const warnings = evaluatePlannerGravityWarnings({
+      initialOriginalGravity,
+      totalEquivalentOriginalGravity: Math.max(initialOriginalGravity, 1.12),
+    });
+
+    expect(
+      warnings.find((warning) => warning.code.startsWith('initial_og'))?.code,
+    ).toBe(code);
+  });
+
+  it.each([
+    [1.12, undefined],
+    [1.121, 'total_og_strong'],
+    [1.151, 'total_og_high'],
+    [1.181, 'total_og_extreme'],
+  ] as const)(
+    'maps total equivalent OG %s to %s',
+    (totalEquivalentOriginalGravity, code) => {
+      const warnings = evaluatePlannerGravityWarnings({
+        initialOriginalGravity: 1.09,
+        totalEquivalentOriginalGravity,
+      });
+
+      expect(
+        warnings.find((warning) => warning.code.startsWith('total_og'))?.code,
+      ).toBe(code);
+    },
+  );
 });
 
 describe('estimateHoneyOriginalGravity', () => {

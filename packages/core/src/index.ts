@@ -11,6 +11,8 @@ const KILOGRAMS_PER_POUND = 0.45359237;
 export const MIN_CALCULATOR_GRAVITY = 0.9;
 export const MAX_CALCULATOR_GRAVITY = 1.3;
 export const MAX_CALCULATOR_ABV_PERCENT = 30;
+export const AUTOMATIC_INITIAL_OG_CAP = 1.11;
+export const MIN_INITIAL_OG = 1.001;
 export const CUSTOM_YEAST_ID = 'custom' as const;
 export const DEFAULT_BUILT_IN_YEAST_ID = 'ec-1118' as const;
 
@@ -184,30 +186,118 @@ export function convertWeight(
     : kilograms;
 }
 
-export const honeyOnlyPlannerInputSchema = z.object({
-  batchVolumeLiters: z.number().positive(),
-  targetAbvPercent: z.number().positive().max(20),
+function addManualInitialOgIssues(
+  input: {
+    targetAbvPercent: number;
+    initialOgMode: 'automatic' | 'manual';
+    manualInitialOg?: number;
+  },
+  context: {
+    addIssue(issue: { code: 'custom'; path: string[]; message: string }): void;
+  },
+): void {
+  if (input.initialOgMode !== 'manual') {
+    return;
+  }
+
+  if (input.manualInitialOg === undefined) {
+    context.addIssue({
+      code: 'custom',
+      path: ['manualInitialOg'],
+      message: 'Enter an initial pitch OG.',
+    });
+    return;
+  }
+
+  const totalEquivalentOriginalGravity =
+    ASSUMED_DRY_FINAL_GRAVITY + input.targetAbvPercent / ABV_POINTS_FACTOR;
+
+  if (input.manualInitialOg > totalEquivalentOriginalGravity) {
+    context.addIssue({
+      code: 'custom',
+      path: ['manualInitialOg'],
+      message: `Initial pitch OG cannot exceed the total equivalent OG of ${totalEquivalentOriginalGravity.toFixed(3)}.`,
+    });
+  }
+}
+
+export const initialOgModeSchema = z.enum(['automatic', 'manual']);
+export const plannerGravityWarningCodeSchema = z.enum([
+  'initial_og_moderate',
+  'initial_og_high',
+  'initial_og_severe',
+  'total_og_strong',
+  'total_og_high',
+  'total_og_extreme',
+]);
+export const plannerGravityWarningSchema = z.object({
+  code: plannerGravityWarningCodeSchema,
+  severity: z.enum(['warning', 'error']),
+  title: z.string().min(1),
+  message: z.string().min(1),
+  action: z.string().min(1),
 });
+
+export const honeyOnlyPlannerInputSchema = z
+  .object({
+    batchVolumeLiters: z.number().positive('Enter a batch volume above 0.'),
+    targetAbvPercent: z
+      .number()
+      .positive('Enter target ABV above 0%.')
+      .max(20, 'Enter target ABV up to 20%.'),
+    initialOgMode: initialOgModeSchema.default('automatic'),
+    manualInitialOg: z
+      .number()
+      .min(MIN_INITIAL_OG, 'Enter an initial pitch OG from 1.001 to 1.300.')
+      .max(
+        MAX_CALCULATOR_GRAVITY,
+        'Enter an initial pitch OG from 1.001 to 1.300.',
+      )
+      .optional(),
+  })
+  .superRefine(addManualInitialOgIssues);
 
 export const honeyOnlyPlannerResultSchema = z.object({
   batchVolumeLiters: z.number().positive(),
   targetAbvPercent: z.number().positive().max(20),
-  honeyKg: z.number().positive(),
-  estimatedOriginalGravity: z.number().positive(),
+  initialOgMode: initialOgModeSchema,
+  automaticInitialOgCap: z.number().positive(),
+  initialOriginalGravity: z.number().positive(),
+  totalEquivalentOriginalGravity: z.number().positive(),
+  totalHoneyKg: z.number().positive(),
+  initialHoneyKg: z.number().positive(),
+  remainingHoneyKg: z.number().nonnegative(),
   estimatedFinalGravity: z.number().positive(),
   estimatedAbvPercent: z.number().positive(),
+  gravityWarnings: plannerGravityWarningSchema.array(),
 });
 
-export type HoneyOnlyPlannerInput = z.infer<typeof honeyOnlyPlannerInputSchema>;
+export type InitialOgMode = z.infer<typeof initialOgModeSchema>;
+export type PlannerGravityWarning = z.infer<typeof plannerGravityWarningSchema>;
+export type HoneyOnlyPlannerInput = z.input<typeof honeyOnlyPlannerInputSchema>;
 export type HoneyOnlyPlannerResult = z.infer<
   typeof honeyOnlyPlannerResultSchema
 >;
 
-export const honeyOnlyPlannerUnitSystemInputSchema = z.object({
-  unitSystem: unitSystemSchema,
-  batchVolume: z.number().positive(),
-  targetAbvPercent: z.number().positive().max(20),
-});
+export const honeyOnlyPlannerUnitSystemInputSchema = z
+  .object({
+    unitSystem: unitSystemSchema,
+    batchVolume: z.number().positive('Enter a batch volume above 0.'),
+    targetAbvPercent: z
+      .number()
+      .positive('Enter target ABV above 0%.')
+      .max(20, 'Enter target ABV up to 20%.'),
+    initialOgMode: initialOgModeSchema.default('automatic'),
+    manualInitialOg: z
+      .number()
+      .min(MIN_INITIAL_OG, 'Enter an initial pitch OG from 1.001 to 1.300.')
+      .max(
+        MAX_CALCULATOR_GRAVITY,
+        'Enter an initial pitch OG from 1.001 to 1.300.',
+      )
+      .optional(),
+  })
+  .superRefine(addManualInitialOgIssues);
 
 export const honeyOnlyPlannerUnitSystemResultSchema = z.object({
   unitSystem: unitSystemSchema,
@@ -215,15 +305,18 @@ export const honeyOnlyPlannerUnitSystemResultSchema = z.object({
   display: z.object({
     batchVolume: z.number().positive(),
     batchVolumeUnit: volumeUnitSchema,
-    honeyWeight: z.number().positive(),
+    totalHoneyWeight: z.number().positive(),
+    initialHoneyWeight: z.number().positive(),
+    remainingHoneyWeight: z.number().nonnegative(),
     honeyWeightUnit: weightUnitSchema,
-    estimatedOriginalGravity: z.number().positive(),
+    initialOriginalGravity: z.number().positive(),
+    totalEquivalentOriginalGravity: z.number().positive(),
     estimatedFinalGravity: z.number().positive(),
     estimatedAbvPercent: z.number().positive(),
   }),
 });
 
-export type HoneyOnlyPlannerUnitSystemInput = z.infer<
+export type HoneyOnlyPlannerUnitSystemInput = z.input<
   typeof honeyOnlyPlannerUnitSystemInputSchema
 >;
 export type HoneyOnlyPlannerUnitSystemResult = z.infer<
@@ -322,20 +415,44 @@ export function planHoneyOnlyBatch(
   const validatedInput = honeyOnlyPlannerInputSchema.parse(input);
   const gravityPoints =
     (validatedInput.targetAbvPercent / ABV_POINTS_FACTOR) * 1000;
-  const honeyKg =
-    (gravityPoints * validatedInput.batchVolumeLiters) /
-    HONEY_GRAVITY_POINTS_PER_KG_PER_LITER;
-  const estimatedOriginalGravity =
+  const totalEquivalentOriginalGravity =
     ASSUMED_DRY_FINAL_GRAVITY + gravityPoints / 1000;
+  const initialOriginalGravity =
+    validatedInput.initialOgMode === 'manual'
+      ? validatedInput.manualInitialOg!
+      : Math.min(totalEquivalentOriginalGravity, AUTOMATIC_INITIAL_OG_CAP);
+  const totalHoneyKg = honeyKgForGravityPoints(
+    gravityPoints,
+    validatedInput.batchVolumeLiters,
+  );
+  const initialHoneyKg =
+    initialOriginalGravity === totalEquivalentOriginalGravity
+      ? totalHoneyKg
+      : honeyKgForGravityPoints(
+          (initialOriginalGravity - ASSUMED_DRY_FINAL_GRAVITY) * 1000,
+          validatedInput.batchVolumeLiters,
+        );
+  const remainingHoneyKg = Math.max(totalHoneyKg - initialHoneyKg, 0);
   const estimatedAbvPercent =
-    (estimatedOriginalGravity - ASSUMED_DRY_FINAL_GRAVITY) * ABV_POINTS_FACTOR;
+    (totalEquivalentOriginalGravity - ASSUMED_DRY_FINAL_GRAVITY) *
+    ABV_POINTS_FACTOR;
 
   return honeyOnlyPlannerResultSchema.parse({
-    ...validatedInput,
-    honeyKg,
-    estimatedOriginalGravity,
+    batchVolumeLiters: validatedInput.batchVolumeLiters,
+    targetAbvPercent: validatedInput.targetAbvPercent,
+    initialOgMode: validatedInput.initialOgMode,
+    automaticInitialOgCap: AUTOMATIC_INITIAL_OG_CAP,
+    initialOriginalGravity,
+    totalEquivalentOriginalGravity,
+    totalHoneyKg,
+    initialHoneyKg,
+    remainingHoneyKg,
     estimatedFinalGravity: ASSUMED_DRY_FINAL_GRAVITY,
     estimatedAbvPercent,
+    gravityWarnings: evaluatePlannerGravityWarnings({
+      initialOriginalGravity,
+      totalEquivalentOriginalGravity,
+    }),
   });
 }
 
@@ -350,7 +467,11 @@ export function planHoneyOnlyBatchForUnitSystem(
   const canonical = planHoneyOnlyBatch({
     batchVolumeLiters,
     targetAbvPercent: validatedInput.targetAbvPercent,
+    initialOgMode: validatedInput.initialOgMode,
+    manualInitialOg: validatedInput.manualInitialOg,
   });
+  const displayWeight = (kilograms: number) =>
+    isUs ? convertWeight(kilograms, 'kilograms', 'pounds') : kilograms;
 
   return honeyOnlyPlannerUnitSystemResultSchema.parse({
     unitSystem: validatedInput.unitSystem,
@@ -358,15 +479,110 @@ export function planHoneyOnlyBatchForUnitSystem(
     display: {
       batchVolume: validatedInput.batchVolume,
       batchVolumeUnit: isUs ? 'gallons' : 'liters',
-      honeyWeight: isUs
-        ? convertWeight(canonical.honeyKg, 'kilograms', 'pounds')
-        : canonical.honeyKg,
+      totalHoneyWeight: displayWeight(canonical.totalHoneyKg),
+      initialHoneyWeight: displayWeight(canonical.initialHoneyKg),
+      remainingHoneyWeight: displayWeight(canonical.remainingHoneyKg),
       honeyWeightUnit: isUs ? 'pounds' : 'kilograms',
-      estimatedOriginalGravity: canonical.estimatedOriginalGravity,
+      initialOriginalGravity: canonical.initialOriginalGravity,
+      totalEquivalentOriginalGravity: canonical.totalEquivalentOriginalGravity,
       estimatedFinalGravity: canonical.estimatedFinalGravity,
       estimatedAbvPercent: canonical.estimatedAbvPercent,
     },
   });
+}
+
+export function evaluatePlannerGravityWarnings(input: {
+  initialOriginalGravity: number;
+  totalEquivalentOriginalGravity: number;
+}): PlannerGravityWarning[] {
+  const validatedInput = z
+    .object({
+      initialOriginalGravity: z
+        .number()
+        .gt(ASSUMED_DRY_FINAL_GRAVITY)
+        .max(MAX_CALCULATOR_GRAVITY),
+      totalEquivalentOriginalGravity: z
+        .number()
+        .gt(ASSUMED_DRY_FINAL_GRAVITY)
+        .max(MAX_CALCULATOR_GRAVITY),
+    })
+    .refine(
+      ({ initialOriginalGravity, totalEquivalentOriginalGravity }) =>
+        initialOriginalGravity <= totalEquivalentOriginalGravity,
+      { message: 'Initial OG cannot exceed total equivalent OG.' },
+    )
+    .parse(input);
+  const warnings: PlannerGravityWarning[] = [];
+  const initialOg = validatedInput.initialOriginalGravity;
+  const totalOg = validatedInput.totalEquivalentOriginalGravity;
+
+  if (initialOg > 1.14) {
+    warnings.push({
+      code: 'initial_og_severe',
+      severity: 'error',
+      title: 'Severe initial gravity stress',
+      message: `An initial OG of ${initialOg.toFixed(3)} carries a high fermentation stall risk.`,
+      action:
+        'Lower the initial pitch OG and reserve more honey for step feeding.',
+    });
+  } else if (initialOg > 1.12) {
+    warnings.push({
+      code: 'initial_og_high',
+      severity: 'warning',
+      title: 'High initial gravity',
+      message: `An initial OG of ${initialOg.toFixed(3)} will put substantial osmotic stress on the yeast.`,
+      action:
+        'Step feeding is strongly recommended; use a healthy pitch and full nutrient support.',
+    });
+  } else if (initialOg > 1.1) {
+    warnings.push({
+      code: 'initial_og_moderate',
+      severity: 'warning',
+      title: 'Elevated initial gravity',
+      message: `An initial OG of ${initialOg.toFixed(3)} is above the normal mead range.`,
+      action:
+        'Use a strong yeast pitch, oxygenation, and complete nutrient support.',
+    });
+  }
+
+  if (totalOg > 1.18) {
+    warnings.push({
+      code: 'total_og_extreme',
+      severity: 'error',
+      title: 'Extreme total fermentable load',
+      message: `The total equivalent OG is ${totalOg.toFixed(3)}, an experimental-strength mead.`,
+      action: 'Confirm the target ABV and yeast tolerance before brewing.',
+    });
+  } else if (totalOg > 1.15) {
+    warnings.push({
+      code: 'total_og_high',
+      severity: 'warning',
+      title: 'High total fermentable load',
+      message: `The total equivalent OG is ${totalOg.toFixed(3)}, in high-gravity or sack-mead territory.`,
+      action:
+        'Plan careful step feeding and monitor yeast health throughout fermentation.',
+    });
+  } else if (totalOg > 1.12) {
+    warnings.push({
+      code: 'total_og_strong',
+      severity: 'warning',
+      title: 'Strong-mead fermentable load',
+      message: `The total equivalent OG is ${totalOg.toFixed(3)}.`,
+      action:
+        'Use a suitable yeast and reserve the calculated remaining honey for step feeding.',
+    });
+  }
+
+  return plannerGravityWarningSchema.array().parse(warnings);
+}
+
+function honeyKgForGravityPoints(
+  gravityPoints: number,
+  batchVolumeLiters: number,
+): number {
+  return (
+    (gravityPoints * batchVolumeLiters) / HONEY_GRAVITY_POINTS_PER_KG_PER_LITER
+  );
 }
 
 export function gravityToBrix(specificGravity: number): number {
