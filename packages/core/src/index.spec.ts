@@ -1,11 +1,16 @@
 import { describe, expect, it } from 'vitest';
 import {
+  BUILT_IN_YEASTS,
   calculateAbv,
   convertVolume,
   convertWeight,
+  createCustomYeast,
+  customYeastInputSchema,
   estimateFinalGravityForAbv,
   estimateHoneyOriginalGravity,
   estimatePotentialAbv,
+  evaluateYeastTolerance,
+  getBuiltInYeast,
   gravityToBrix,
   honeyOnlyPlannerInputSchema,
   planHoneyOnlyBatch,
@@ -172,5 +177,70 @@ describe('ABV calculator', () => {
         targetAbvPercent: 30,
       }),
     ).toThrow('Target ABV implies a final gravity below 0.900.');
+  });
+});
+
+describe('yeast selection and tolerance', () => {
+  it('provides the seven curated MVP yeasts with EC-1118 as the baseline', () => {
+    expect(BUILT_IN_YEASTS).toHaveLength(7);
+    expect(getBuiltInYeast('ec-1118')).toMatchObject({
+      name: 'EC-1118',
+      alcoholTolerancePercent: 18,
+      nitrogenRequirement: 'low',
+    });
+  });
+
+  it('validates and normalizes custom yeast details', () => {
+    expect(
+      createCustomYeast({
+        name: '  House Kveik  ',
+        alcoholTolerancePercent: 13,
+        nitrogenRequirement: 'high',
+      }),
+    ).toMatchObject({
+      id: 'custom',
+      name: 'House Kveik',
+      alcoholTolerancePercent: 13,
+      nitrogenRequirement: 'high',
+    });
+
+    expect(() =>
+      customYeastInputSchema.parse({
+        name: '',
+        alcoholTolerancePercent: 31,
+        nitrogenRequirement: 'medium',
+      }),
+    ).toThrow();
+  });
+
+  it.each([
+    [12, 'normal', 'ok'],
+    [12.1, 'moderate', 'warning'],
+    [13.1, 'high', 'warning'],
+    [14.1, 'severe', 'error'],
+  ] as const)(
+    'maps a %s%% target to %s tolerance state',
+    (targetAbvPercent, level, noticeTone) => {
+      const result = evaluateYeastTolerance({
+        yeast: getBuiltInYeast('d47'),
+        targetAbvPercent,
+        totalEquivalentOg: 1.14,
+      });
+
+      expect(result.level).toBe(level);
+      expect(result.noticeTone).toBe(noticeTone);
+    },
+  );
+
+  it('adds a tolerance-limited FG hint only above listed tolerance', () => {
+    const result = evaluateYeastTolerance({
+      yeast: getBuiltInYeast('d47'),
+      targetAbvPercent: 18,
+      totalEquivalentOg: 1.14,
+    });
+
+    expect(result.estimatedToleranceLimitedFinalGravity).toBeCloseTo(1.033, 3);
+    expect(result.message).toContain('FG may finish around 1.033');
+    expect(result.action).toContain('higher-tolerance yeast');
   });
 });
