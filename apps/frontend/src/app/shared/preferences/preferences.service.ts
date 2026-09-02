@@ -17,8 +17,7 @@ export class PreferencesService {
   private readonly document = inject(DOCUMENT);
   private readonly destroyRef = inject(DestroyRef);
   private readonly storage = this.document.defaultView?.localStorage;
-  private readonly systemThemeQuery =
-    this.document.defaultView?.matchMedia?.(SYSTEM_THEME_QUERY);
+  private readonly systemThemeQuery = this.document.defaultView?.matchMedia?.(SYSTEM_THEME_QUERY);
   private readonly initial = this.readPreferences();
   private readonly handleSystemThemeChange = (): void => {
     this.applyTheme('system');
@@ -33,10 +32,7 @@ export class PreferencesService {
     this.syncSystemThemeListener();
 
     this.destroyRef.onDestroy(() => {
-      this.systemThemeQuery?.removeEventListener(
-        'change',
-        this.handleSystemThemeChange,
-      );
+      this.systemThemeQuery?.removeEventListener('change', this.handleSystemThemeChange);
     });
   }
 
@@ -75,8 +71,7 @@ export class PreferencesService {
 
   private applyTheme(themePreference: ThemePreference): void {
     const root = this.document.documentElement;
-    const resolved =
-      themePreference === 'system' ? this.resolveSystemTheme() : themePreference;
+    const resolved = themePreference === 'system' ? this.resolveSystemTheme() : themePreference;
 
     root.dataset['theme'] = resolved;
   }
@@ -86,16 +81,10 @@ export class PreferencesService {
   }
 
   private syncSystemThemeListener(): void {
-    this.systemThemeQuery?.removeEventListener(
-      'change',
-      this.handleSystemThemeChange,
-    );
+    this.systemThemeQuery?.removeEventListener('change', this.handleSystemThemeChange);
 
     if (this.themePreference() === 'system') {
-      this.systemThemeQuery?.addEventListener(
-        'change',
-        this.handleSystemThemeChange,
-      );
+      this.systemThemeQuery?.addEventListener('change', this.handleSystemThemeChange);
     }
   }
 

@@ -135,7 +135,10 @@ describe('PreferencesService', () => {
       dispatchEvent: vi.fn(),
     } as unknown as MediaQueryList;
 
-    vi.stubGlobal('matchMedia', vi.fn(() => systemThemeQuery));
+    vi.stubGlobal(
+      'matchMedia',
+      vi.fn(() => systemThemeQuery),
+    );
 
     const service = TestBed.inject(PreferencesService);
     expect(document.documentElement.dataset['theme']).toBe('light');

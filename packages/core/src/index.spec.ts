@@ -131,7 +131,9 @@ describe('gravity conversions', () => {
   it('rejects a final gravity above the original gravity', () => {
     expect(() =>
       estimatePotentialAbv({ originalGravity: 1.01, finalGravity: 1.02 }),
-    ).toThrow('Original gravity must be greater than or equal to final gravity.');
+    ).toThrow(
+      'Original gravity must be greater than or equal to final gravity.',
+    );
 
     expect(
       estimatePotentialAbv({ originalGravity: 1.01, finalGravity: 1.01 }),
