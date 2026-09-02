@@ -1,9 +1,22 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it } from 'vitest';
 import { buildServer } from '../server.js';
+
+const testServers = new Set<ReturnType<typeof buildServer>>();
+
+function createTestServer(...args: Parameters<typeof buildServer>) {
+  const app = buildServer(...args);
+  testServers.add(app);
+  return app;
+}
+
+afterEach(async () => {
+  await Promise.all([...testServers].map((app) => app.close()));
+  testServers.clear();
+});
 
 describe('Fastify API foundation', () => {
   it('returns an unversioned liveness response', async () => {
-    const app = buildServer();
+    const app = createTestServer();
     const response = await app.inject({ method: 'GET', url: '/healthz' });
 
     expect(response.statusCode).toBe(200);
@@ -11,7 +24,7 @@ describe('Fastify API foundation', () => {
   });
 
   it('returns readiness in the standard success envelope', async () => {
-    const app = buildServer();
+    const app = createTestServer();
     const response = await app.inject({
       method: 'GET',
       url: '/readyz',
@@ -34,7 +47,7 @@ describe('Fastify API foundation', () => {
   });
 
   it('generates a request id when the inbound id is missing or unsafe', async () => {
-    const app = buildServer();
+    const app = createTestServer();
     const response = await app.inject({
       method: 'GET',
       url: '/readyz',
@@ -51,7 +64,7 @@ describe('Fastify API foundation', () => {
   });
 
   it('wraps unknown routes and unsupported methods in error envelopes', async () => {
-    const app = buildServer();
+    const app = createTestServer();
     const notFound = await app.inject({ method: 'GET', url: '/missing' });
     const methodNotAllowed = await app.inject({
       method: 'POST',
@@ -73,7 +86,7 @@ describe('Fastify API foundation', () => {
   });
 
   it('normalizes invalid JSON and body limit errors', async () => {
-    const invalidJsonApp = buildServer();
+    const invalidJsonApp = createTestServer();
     const invalidJson = await invalidJsonApp.inject({
       method: 'POST',
       url: '/api/v1/planner/honey-only',
@@ -81,7 +94,7 @@ describe('Fastify API foundation', () => {
       payload: '{"bad":',
     });
 
-    const smallLimitApp = buildServer({ bodyLimitBytes: 8 });
+    const smallLimitApp = createTestServer({ bodyLimitBytes: 8 });
     const payloadTooLarge = await smallLimitApp.inject({
       method: 'POST',
       url: '/api/v1/planner/honey-only',
@@ -96,7 +109,7 @@ describe('Fastify API foundation', () => {
   });
 
   it('uses explicit CORS origins and does not default to wildcard CORS', async () => {
-    const app = buildServer({ corsOrigins: ['http://localhost:4200'] });
+    const app = createTestServer({ corsOrigins: ['http://localhost:4200'] });
     const allowed = await app.inject({
       method: 'OPTIONS',
       url: '/readyz',
