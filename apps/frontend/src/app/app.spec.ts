@@ -1,4 +1,5 @@
 import { provideLocationMocks } from '@angular/common/testing';
+import { vi } from 'vitest';
 import { TestBed } from '@angular/core/testing';
 import { provideRouter, Router } from '@angular/router';
 import { App } from './app';
@@ -94,6 +95,10 @@ describe('PreferencesService', () => {
     document.documentElement.removeAttribute('data-theme');
   });
 
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
   it('persists unit and theme preferences globally', () => {
     const service = TestBed.inject(PreferencesService);
 
@@ -104,6 +109,44 @@ describe('PreferencesService', () => {
     expect(service.themePreference()).toBe('dark');
     expect(localStorage.getItem('meadstep.preferences')).toContain('"unitSystem":"us"');
     expect(document.documentElement.dataset['theme']).toBe('dark');
+  });
+
+  it('follows OS theme changes while the system preference is selected', () => {
+    let matchesDarkTheme = false;
+    const changeListeners = new Set<() => void>();
+    const systemThemeQuery = {
+      get matches() {
+        return matchesDarkTheme;
+      },
+      media: '(prefers-color-scheme: dark)',
+      onchange: null,
+      addEventListener: vi.fn((eventName: string, listener: () => void) => {
+        if (eventName === 'change') {
+          changeListeners.add(listener);
+        }
+      }),
+      removeEventListener: vi.fn((eventName: string, listener: () => void) => {
+        if (eventName === 'change') {
+          changeListeners.delete(listener);
+        }
+      }),
+      addListener: vi.fn(),
+      removeListener: vi.fn(),
+      dispatchEvent: vi.fn(),
+    } as unknown as MediaQueryList;
+
+    vi.stubGlobal('matchMedia', vi.fn(() => systemThemeQuery));
+
+    const service = TestBed.inject(PreferencesService);
+    expect(document.documentElement.dataset['theme']).toBe('light');
+
+    matchesDarkTheme = true;
+    changeListeners.forEach((listener) => listener());
+    expect(document.documentElement.dataset['theme']).toBe('dark');
+
+    service.setThemePreference('light');
+    expect(changeListeners.size).toBe(0);
+    expect(document.documentElement.dataset['theme']).toBe('light');
   });
 });
 
