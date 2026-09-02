@@ -1,9 +1,9 @@
 ---
 title: Add classic and reverse ABV calculator
 type: AFK
-status: needs-triage
+status: ready-for-human
 labels:
-  - needs-triage
+  - ready-for-human
 user_stories:
   - 43
   - 44
@@ -23,15 +23,19 @@ Add a standalone ABV calculator that supports classic OG + FG to ABV and reverse
 
 ## Acceptance criteria
 
-- [ ] Users can calculate ABV from OG and FG.
-- [ ] Users can estimate FG from OG and target ABV.
-- [ ] The calculator validates gravity and ABV ranges and presents plain error states.
-- [ ] The shared package owns both ABV formulas.
-- [ ] `/abv` is a focused route-level worksheet using the shared shell, navigation, preferences, field components, and result components.
-- [ ] The ABV route uses a facade that owns form state, calls `@meadstep/core`, maps results into UI view models, and exposes validation state.
-- [ ] Invalid fields show an error border and a small field-level message; invalid dependent output shows a neutral "enter valid values" state.
-- [ ] Tests cover classic ABV, reverse FG estimation, invalid inputs, facade/view-model behavior, and rendered routed UI output.
+- [x] Users can calculate ABV from OG and FG.
+- [x] Users can estimate FG from OG and target ABV.
+- [x] The calculator validates gravity and ABV ranges and presents plain error states.
+- [x] The shared package owns both ABV formulas.
+- [x] `/abv` is a focused route-level worksheet using the shared shell, navigation, preferences, field components, and result components.
+- [x] The ABV route uses a facade that owns form state, calls `@meadstep/core`, maps results into UI view models, and exposes validation state.
+- [x] Invalid fields show an error border and a small field-level message; invalid dependent output shows a neutral "enter valid values" state.
+- [x] Tests cover classic ABV, reverse FG estimation, invalid inputs, facade/view-model behavior, and rendered routed UI output.
 
 ## Blocked by
 
 - `001-core-package-planner-smoke.md`
+
+## Comments
+
+Implemented on `feature/abv-calculator`. Core schemas constrain calculator gravity to 0.900–1.300 and target/calculated ABV to 0–30%; the route facade maps those domain rules to field-level messages and a neutral dependent-output state.

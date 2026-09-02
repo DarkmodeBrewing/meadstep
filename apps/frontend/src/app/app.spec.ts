@@ -4,6 +4,7 @@ import { TestBed } from '@angular/core/testing';
 import { provideRouter, Router } from '@angular/router';
 import { App } from './app';
 import { routes } from './app.routes';
+import { AbvToolFacade } from './features/tools/abv/abv-tool.facade';
 import { GravityToolFacade } from './features/tools/gravity/gravity-tool.facade';
 import { HoneyOgToolFacade } from './features/tools/honey-og/honey-og-tool.facade';
 import { PreferencesService } from './shared/preferences/preferences.service';
@@ -87,6 +88,40 @@ describe('App routing workflows', () => {
 
     expect(compiled.textContent).toContain('1.101 SG');
   });
+
+  it('renders classic and reverse ABV workflows with neutral invalid output', async () => {
+    const router = TestBed.inject(Router);
+    const fixture = TestBed.createComponent(App);
+
+    await router.navigateByUrl('/abv');
+    fixture.detectChanges();
+    await fixture.whenStable();
+
+    const compiled = fixture.nativeElement as HTMLElement;
+    expect(compiled.textContent).toContain('ABV calculator');
+    expect(compiled.textContent).toContain('Estimated ABV');
+    expect(compiled.textContent).toContain('10.5%');
+
+    const finalGravityInput = compiled.querySelector<HTMLInputElement>('#abv-fg');
+    expect(finalGravityInput).toBeTruthy();
+    finalGravityInput!.value = '1.1';
+    finalGravityInput!.dispatchEvent(new Event('input'));
+    fixture.detectChanges();
+    await fixture.whenStable();
+
+    expect(finalGravityInput!.getAttribute('aria-invalid')).toBe('true');
+    expect(compiled.textContent).toContain('Final gravity must not exceed original gravity.');
+    expect(compiled.textContent).toContain('Enter valid values to see the result.');
+
+    const reverseModeControl = compiled.querySelector<HTMLInputElement>('#abv-mode-reverse');
+    expect(reverseModeControl).toBeTruthy();
+    reverseModeControl!.click();
+    fixture.detectChanges();
+    await fixture.whenStable();
+
+    expect(compiled.textContent).toContain('Estimated FG');
+    expect(compiled.textContent).toContain('1.010');
+  });
 });
 
 describe('PreferencesService', () => {
@@ -154,6 +189,19 @@ describe('PreferencesService', () => {
 });
 
 describe('tool facades', () => {
+  it('maps ABV calculator modes to results and validation state', () => {
+    const facade = TestBed.inject(AbvToolFacade);
+
+    expect(facade.resultRows()[0]?.value).toBe('10.5%');
+
+    facade.setMode('reverse');
+    expect(facade.resultRows()[0]?.value).toBe('1.010');
+
+    facade.setTargetAbvPercent(31);
+    expect(facade.fieldErrors().targetAbvPercent).toBe('Enter target ABV from 0% to 30%.');
+    expect(facade.resultRows()).toEqual([]);
+  });
+
   it('maps honey OG inputs to result rows and validation state', () => {
     const facade = TestBed.inject(HoneyOgToolFacade);
 
