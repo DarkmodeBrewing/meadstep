@@ -33,6 +33,8 @@ describe('App routing workflows', () => {
     expect(router.url).toBe('/planner');
     expect(compiled.textContent).toContain('Honey-only planner');
     expect(compiled.textContent).toContain('Initial Must');
+    expect(compiled.textContent).toContain('Step Feeds');
+    expect(compiled.textContent).toContain('No step feeding required for this plan.');
     expect(compiled.textContent).toContain('Total honey needed');
     expect(compiled.textContent).toContain('EC-1118');
     expect(compiled.textContent).toContain('Comfortable yeast tolerance margin');
@@ -60,6 +62,13 @@ describe('App routing workflows', () => {
     expect(compiled.textContent).toContain('0.47 kg');
     expect(compiled.textContent).toContain('Elevated initial gravity');
     expect(compiled.textContent).toContain('Strong-mead fermentable load');
+    expect(compiled.querySelectorAll('.step-feed-card')).toHaveLength(2);
+    expect(compiled.querySelector('.step-feed-card')?.textContent).toContain('234 g');
+    expect(compiled.querySelector('.step-feed-card')?.textContent).toContain('At SG 1.096');
+    expect(compiled.querySelector('.step-feed-card')?.textContent).toContain('Around Day 2');
+    expect(compiled.querySelector('#planner-output')?.textContent).toContain(
+      'Feed 2: add 234 g at SG 1.096',
+    );
 
     const manualModeControl = compiled.querySelector<HTMLInputElement>('#initial-og-mode-manual');
     manualModeControl!.click();
@@ -141,6 +150,40 @@ describe('App routing workflows', () => {
     expect(compiled.textContent).toContain('House Kveik');
     expect(compiled.textContent).toContain('13.0% tolerance · high nitrogen requirement');
     expect(compiled.textContent).toContain('Target exceeds yeast tolerance');
+  });
+
+  it('renders step-feed cap warnings inline and in the worksheet summary', async () => {
+    const router = TestBed.inject(Router);
+    const fixture = TestBed.createComponent(App);
+
+    await router.navigateByUrl('/planner');
+    fixture.detectChanges();
+    await fixture.whenStable();
+
+    const compiled = fixture.nativeElement as HTMLElement;
+    const targetAbvInput = compiled.querySelector<HTMLInputElement>('#target-abv-percent');
+    targetAbvInput!.value = '20';
+    targetAbvInput!.dispatchEvent(new Event('input'));
+    compiled.querySelector<HTMLInputElement>('#initial-og-mode-manual')!.click();
+    fixture.detectChanges();
+    await fixture.whenStable();
+
+    const manualInitialOgInput = compiled.querySelector<HTMLInputElement>('#manual-initial-og');
+    manualInitialOgInput!.value = '1.001';
+    manualInitialOgInput!.dispatchEvent(new Event('input'));
+    fixture.detectChanges();
+    await fixture.whenStable();
+
+    expect(compiled.querySelectorAll('.step-feed-card')).toHaveLength(4);
+    expect(compiled.querySelector('.step-feeds .inline-notices')?.textContent).toContain(
+      'Feed size exceeds the preferred limit',
+    );
+    expect(compiled.querySelector('.step-feeds .inline-notices')?.textContent).toContain(
+      'Pitch OG cannot be restored at this feed size',
+    );
+    expect(compiled.querySelector('.notice-summary')?.textContent).toContain(
+      'Feed size exceeds the preferred limit',
+    );
   });
 
   it('renders the honey OG workflow with inline validation and assumptions', async () => {
@@ -310,6 +353,17 @@ describe('tool facades', () => {
     expect(facade.toleranceResult()?.level).toBe('high');
     expect(facade.result()?.canonical.initialOriginalGravity).toBe(1.11);
     expect(facade.initialMustViewModel().rows[1]?.value).toBe('0.47 kg');
+    expect(facade.stepFeedsViewModel()).toMatchObject({
+      valid: true,
+      hasFeeds: true,
+      summary: '2 equal feeds from the reserved honey.',
+    });
+    expect(facade.stepFeedsViewModel().feeds[0]).toMatchObject({
+      feedNumber: 1,
+      honeyAmount: '234 g',
+      gravityMilestone: '1.096',
+      approximateDayLabel: 'Day 2',
+    });
 
     facade.setSelectedYeastId('d47');
     expect(facade.toleranceResult()?.level).toBe('severe');
@@ -354,6 +408,23 @@ describe('tool facades', () => {
       'initial_og_severe',
       'total_og_high',
     ]);
+  });
+
+  it('maps capped step feeds and their warnings into the worksheet', () => {
+    const facade = TestBed.inject(PlannerFacade);
+    const noticeService = TestBed.inject(NoticeService);
+
+    facade.setTargetAbvPercent(20);
+    facade.setInitialOgMode('manual');
+    facade.setManualInitialOg(1.001);
+
+    expect(facade.stepFeedsViewModel().feeds).toHaveLength(4);
+    expect(facade.stepFeedsViewModel().feeds.at(-1)?.approximateDayLabel).toBe('Day 8');
+    expect(facade.stepFeedNotices().map((notice) => notice.id)).toEqual([
+      'step_feed_cap_exceeded',
+      'step_feed_refill_ceiling_unreachable',
+    ]);
+    expect(noticeService.all()).toEqual(expect.arrayContaining(facade.stepFeedNotices()));
   });
 
   it('maps invalid setup fields to errors and neutral initial must output', () => {

@@ -2,6 +2,8 @@ import { describe, expect, it } from 'vitest';
 import {
   AUTOMATIC_INITIAL_OG_CAP,
   BUILT_IN_YEASTS,
+  MAX_AUTOMATIC_STEP_FEEDS,
+  PREFERRED_MAX_STEP_FEED_GRAMS_PER_LITER,
   calculateAbv,
   convertVolume,
   convertWeight,
@@ -17,6 +19,7 @@ import {
   honeyOnlyPlannerInputSchema,
   planHoneyOnlyBatch,
   planHoneyOnlyBatchForUnitSystem,
+  planStepFeedingSchedule,
   brixToGravity,
   type HoneyOnlyPlannerResult,
 } from './index';
@@ -48,6 +51,7 @@ describe('planHoneyOnlyBatch', () => {
     expect(result.totalHoneyKg).toBeCloseTo(1.58, 2);
     expect(result.initialHoneyKg).toBeCloseTo(result.totalHoneyKg, 9);
     expect(result.remainingHoneyKg).toBe(0);
+    expect(result.stepFeedingSchedule.feeds).toEqual([]);
     expect(result.initialOriginalGravity).toBeCloseTo(1.091, 3);
     expect(result.totalEquivalentOriginalGravity).toBeCloseTo(1.091, 3);
     expect(result.estimatedFinalGravity).toBe(1);
@@ -66,6 +70,17 @@ describe('planHoneyOnlyBatch', () => {
     expect(result.initialHoneyKg).toBeCloseTo(1.897, 3);
     expect(result.totalHoneyKg).toBeCloseTo(2.365, 3);
     expect(result.remainingHoneyKg).toBeCloseTo(0.468, 3);
+    expect(result.stepFeedingSchedule.feedCount).toBe(2);
+    expect(result.stepFeedingSchedule.feeds[0]).toMatchObject({
+      feedNumber: 1,
+      approximateDay: 2,
+      approximateDayLabel: 'Day 2',
+    });
+    expect(result.stepFeedingSchedule.feeds[0]?.honeyGrams).toBeCloseTo(234, 0);
+    expect(result.stepFeedingSchedule.feeds[0]?.gravityMilestone).toBeCloseTo(
+      1.096,
+      3,
+    );
     expect(result.gravityWarnings.map((warning) => warning.code)).toEqual([
       'initial_og_moderate',
       'total_og_strong',
@@ -105,6 +120,104 @@ describe('planHoneyOnlyBatch', () => {
     ).toThrow(
       'Initial pitch OG cannot exceed the total equivalent OG of 1.091.',
     );
+  });
+});
+
+describe('planStepFeedingSchedule', () => {
+  it('returns an empty schedule when no honey remains', () => {
+    const result = planStepFeedingSchedule({
+      batchVolumeLiters: 5,
+      remainingHoneyKg: 0,
+      initialOriginalGravity: 1.091,
+    });
+
+    expect(result).toMatchObject({
+      idealFeedCount: 0,
+      feedCount: 0,
+      feedHoneyGrams: 0,
+      exceedsPreferredFeedSize: false,
+      gravityMilestoneWasClamped: false,
+      feeds: [],
+      warnings: [],
+    });
+  });
+
+  it('creates one feed at the gravity that refills to pitch OG', () => {
+    const result = planStepFeedingSchedule({
+      batchVolumeLiters: 5,
+      remainingHoneyKg: 0.2,
+      initialOriginalGravity: 1.11,
+    });
+
+    expect(result.preferredMaximumFeedGrams).toBe(
+      5 * PREFERRED_MAX_STEP_FEED_GRAMS_PER_LITER,
+    );
+    expect(result.feedCount).toBe(1);
+    expect(result.feeds[0]).toMatchObject({
+      feedNumber: 1,
+      honeyGrams: 200,
+      approximateDay: 2,
+      approximateDayLabel: 'Day 2',
+    });
+    expect(result.feeds[0]?.gravityContributionPoints).toBeCloseTo(11.6, 6);
+    expect(result.feeds[0]?.gravityMilestone).toBeCloseTo(1.0984, 6);
+  });
+
+  it('creates equal multiple feeds with two-day guidance', () => {
+    const result = planStepFeedingSchedule({
+      batchVolumeLiters: 5,
+      remainingHoneyKg: 0.6,
+      initialOriginalGravity: 1.11,
+    });
+
+    expect(result.feedCount).toBe(3);
+    expect(result.feeds.map((feed) => feed.honeyGrams)).toEqual([
+      200, 200, 200,
+    ]);
+    expect(result.feeds.map((feed) => feed.approximateDayLabel)).toEqual([
+      'Day 2',
+      'Day 4',
+      'Day 6',
+    ]);
+    expect(
+      result.feeds.reduce((sum, feed) => sum + feed.honeyGrams, 0),
+    ).toBeCloseTo(600, 9);
+  });
+
+  it('caps at four feeds and warns when each exceeds 50 g/L', () => {
+    const result = planStepFeedingSchedule({
+      batchVolumeLiters: 5,
+      remainingHoneyKg: 2,
+      initialOriginalGravity: 1.11,
+    });
+
+    expect(result.idealFeedCount).toBe(8);
+    expect(result.feedCount).toBe(MAX_AUTOMATIC_STEP_FEEDS);
+    expect(result.feedHoneyGrams).toBe(500);
+    expect(result.exceedsPreferredFeedSize).toBe(true);
+    expect(result.feeds.map((feed) => feed.approximateDay)).toEqual([
+      2, 4, 6, 8,
+    ]);
+    expect(result.warnings.map((warning) => warning.code)).toEqual([
+      'step_feed_cap_exceeded',
+    ]);
+  });
+
+  it('clamps an impossible refill milestone to 1.000 and warns', () => {
+    const result = planStepFeedingSchedule({
+      batchVolumeLiters: 5,
+      remainingHoneyKg: 2,
+      initialOriginalGravity: 1.01,
+    });
+
+    expect(result.gravityMilestoneWasClamped).toBe(true);
+    expect(result.feeds.every((feed) => feed.gravityMilestone === 1)).toBe(
+      true,
+    );
+    expect(result.warnings.map((warning) => warning.code)).toEqual([
+      'step_feed_cap_exceeded',
+      'step_feed_refill_ceiling_unreachable',
+    ]);
   });
 });
 

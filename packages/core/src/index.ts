@@ -13,6 +13,10 @@ export const MAX_CALCULATOR_GRAVITY = 1.3;
 export const MAX_CALCULATOR_ABV_PERCENT = 30;
 export const AUTOMATIC_INITIAL_OG_CAP = 1.11;
 export const MIN_INITIAL_OG = 1.001;
+export const PREFERRED_MAX_STEP_FEED_GRAMS_PER_LITER = 50;
+export const MAX_AUTOMATIC_STEP_FEEDS = 4;
+export const STEP_FEED_DAY_INTERVAL = 2;
+export const MIN_STEP_FEED_GRAVITY_MILESTONE = 1;
 export const CUSTOM_YEAST_ID = 'custom' as const;
 export const DEFAULT_BUILT_IN_YEAST_ID = 'ec-1118' as const;
 
@@ -238,6 +242,50 @@ export const plannerGravityWarningSchema = z.object({
   action: z.string().min(1),
 });
 
+export const stepFeedWarningCodeSchema = z.enum([
+  'step_feed_cap_exceeded',
+  'step_feed_refill_ceiling_unreachable',
+]);
+export const stepFeedWarningSchema = z.object({
+  code: stepFeedWarningCodeSchema,
+  severity: z.literal('warning'),
+  title: z.string().min(1),
+  message: z.string().min(1),
+  action: z.string().min(1),
+});
+export const stepFeedInputSchema = z.object({
+  batchVolumeLiters: z.number().positive(),
+  remainingHoneyKg: z.number().nonnegative(),
+  initialOriginalGravity: z
+    .number()
+    .min(MIN_STEP_FEED_GRAVITY_MILESTONE)
+    .max(MAX_CALCULATOR_GRAVITY),
+});
+export const stepFeedSchema = z.object({
+  feedNumber: z.number().int().positive().max(MAX_AUTOMATIC_STEP_FEEDS),
+  honeyGrams: z.number().positive(),
+  gravityContributionPoints: z.number().positive(),
+  gravityMilestone: z
+    .number()
+    .min(MIN_STEP_FEED_GRAVITY_MILESTONE)
+    .max(MAX_CALCULATOR_GRAVITY),
+  approximateDay: z.number().int().positive(),
+  approximateDayLabel: z.string().min(1),
+});
+export const stepFeedPlanResultSchema = z.object({
+  batchVolumeLiters: z.number().positive(),
+  remainingHoneyKg: z.number().nonnegative(),
+  initialOriginalGravity: z.number().positive(),
+  preferredMaximumFeedGrams: z.number().positive(),
+  idealFeedCount: z.number().int().nonnegative(),
+  feedCount: z.number().int().nonnegative().max(MAX_AUTOMATIC_STEP_FEEDS),
+  feedHoneyGrams: z.number().nonnegative(),
+  exceedsPreferredFeedSize: z.boolean(),
+  gravityMilestoneWasClamped: z.boolean(),
+  feeds: stepFeedSchema.array().max(MAX_AUTOMATIC_STEP_FEEDS),
+  warnings: stepFeedWarningSchema.array(),
+});
+
 export const honeyOnlyPlannerInputSchema = z
   .object({
     batchVolumeLiters: z.number().positive('Enter a batch volume above 0.'),
@@ -270,10 +318,15 @@ export const honeyOnlyPlannerResultSchema = z.object({
   estimatedFinalGravity: z.number().positive(),
   estimatedAbvPercent: z.number().positive(),
   gravityWarnings: plannerGravityWarningSchema.array(),
+  stepFeedingSchedule: stepFeedPlanResultSchema,
 });
 
 export type InitialOgMode = z.infer<typeof initialOgModeSchema>;
 export type PlannerGravityWarning = z.infer<typeof plannerGravityWarningSchema>;
+export type StepFeedWarning = z.infer<typeof stepFeedWarningSchema>;
+export type StepFeedInput = z.infer<typeof stepFeedInputSchema>;
+export type StepFeed = z.infer<typeof stepFeedSchema>;
+export type StepFeedPlanResult = z.infer<typeof stepFeedPlanResultSchema>;
 export type HoneyOnlyPlannerInput = z.input<typeof honeyOnlyPlannerInputSchema>;
 export type HoneyOnlyPlannerResult = z.infer<
   typeof honeyOnlyPlannerResultSchema
@@ -453,6 +506,103 @@ export function planHoneyOnlyBatch(
       initialOriginalGravity,
       totalEquivalentOriginalGravity,
     }),
+    stepFeedingSchedule: planStepFeedingSchedule({
+      batchVolumeLiters: validatedInput.batchVolumeLiters,
+      remainingHoneyKg,
+      initialOriginalGravity,
+    }),
+  });
+}
+
+export function planStepFeedingSchedule(
+  input: StepFeedInput,
+): StepFeedPlanResult {
+  const validatedInput = stepFeedInputSchema.parse(input);
+  const preferredMaximumFeedGrams =
+    PREFERRED_MAX_STEP_FEED_GRAMS_PER_LITER * validatedInput.batchVolumeLiters;
+  const remainingHoneyGrams = validatedInput.remainingHoneyKg * 1000;
+
+  if (remainingHoneyGrams <= Number.EPSILON) {
+    return stepFeedPlanResultSchema.parse({
+      ...validatedInput,
+      preferredMaximumFeedGrams,
+      idealFeedCount: 0,
+      feedCount: 0,
+      feedHoneyGrams: 0,
+      exceedsPreferredFeedSize: false,
+      gravityMilestoneWasClamped: false,
+      feeds: [],
+      warnings: [],
+    });
+  }
+
+  const idealFeedCount = Math.ceil(
+    remainingHoneyGrams / preferredMaximumFeedGrams,
+  );
+  const feedCount = Math.min(idealFeedCount, MAX_AUTOMATIC_STEP_FEEDS);
+  const feedHoneyGrams = remainingHoneyGrams / feedCount;
+  const feedGramsPerLiter = feedHoneyGrams / validatedInput.batchVolumeLiters;
+  const exceedsPreferredFeedSize = idealFeedCount > MAX_AUTOMATIC_STEP_FEEDS;
+  const gravityContributionPoints =
+    ((feedHoneyGrams / 1000) * HONEY_GRAVITY_POINTS_PER_KG_PER_LITER) /
+    validatedInput.batchVolumeLiters;
+  const rawGravityMilestone =
+    validatedInput.initialOriginalGravity - gravityContributionPoints / 1000;
+  const gravityMilestone = Math.max(
+    rawGravityMilestone,
+    MIN_STEP_FEED_GRAVITY_MILESTONE,
+  );
+  const gravityMilestoneWasClamped =
+    rawGravityMilestone < MIN_STEP_FEED_GRAVITY_MILESTONE;
+  const warnings: StepFeedWarning[] = [];
+
+  if (exceedsPreferredFeedSize) {
+    warnings.push({
+      code: 'step_feed_cap_exceeded',
+      severity: 'warning',
+      title: 'Feed size exceeds the preferred limit',
+      message: `Capping the schedule at four feeds makes each feed ${feedGramsPerLiter.toFixed(1)} g/L, above the preferred 50 g/L.`,
+      action:
+        'Add each feed only at its gravity milestone, mix thoroughly, and monitor fermentation response.',
+    });
+  }
+
+  if (gravityMilestoneWasClamped) {
+    warnings.push({
+      code: 'step_feed_refill_ceiling_unreachable',
+      severity: 'warning',
+      title: 'Pitch OG cannot be restored at this feed size',
+      message:
+        'The must would need to fall below 1.000 SG for this feed to return it to the selected initial pitch OG.',
+      action:
+        'Review the initial OG or feed plan before brewing; 1.000 is shown as a safety floor.',
+    });
+  }
+
+  const feeds: StepFeed[] = Array.from({ length: feedCount }, (_, index) => {
+    const feedNumber = index + 1;
+    const approximateDay = feedNumber * STEP_FEED_DAY_INTERVAL;
+
+    return {
+      feedNumber,
+      honeyGrams: feedHoneyGrams,
+      gravityContributionPoints,
+      gravityMilestone,
+      approximateDay,
+      approximateDayLabel: `Day ${approximateDay}`,
+    };
+  });
+
+  return stepFeedPlanResultSchema.parse({
+    ...validatedInput,
+    preferredMaximumFeedGrams,
+    idealFeedCount,
+    feedCount,
+    feedHoneyGrams,
+    exceedsPreferredFeedSize,
+    gravityMilestoneWasClamped,
+    feeds,
+    warnings,
   });
 }
 

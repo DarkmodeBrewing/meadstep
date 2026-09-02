@@ -165,6 +165,16 @@ idealFeedCount = ceil(remainingHoneyG / (50 * volumeL))
 - Auto-generated plans should cap at `4` step feeds.
 - If more than `4` feeds would be needed to stay under `50 g/L`, generate `4` feeds and warn that each feed exceeds the preferred cap.
 - Default feed amounts can be equal splits for MVP.
+- Each gravity milestone should be calculated as the SG at which adding that feed returns the must to the initial pitch OG:
+
+```text
+feedGravityPoints = (feedHoneyKg * 290) / volumeL
+gravityMilestone = initialPitchOg - (feedGravityPoints / 1000)
+```
+
+- Clamp a calculated milestone below `1.000` to `1.000` and warn that the chosen pitch OG cannot be maintained within the four-feed limit.
+- Approximate feed days default to `Day 2`, `Day 4`, `Day 6`, and `Day 8` for feeds one through four.
+- Approximate days are planning guidance only. If the gravity milestone has not been reached, wait for the measured SG before feeding.
 
 ## TOSNA / Nutrients
 
