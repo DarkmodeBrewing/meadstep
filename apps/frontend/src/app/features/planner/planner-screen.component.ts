@@ -161,6 +161,35 @@ import { PlannerFacade } from './planner.facade';
             <app-result-rows [rows]="facade.initialMustViewModel().rows" />
           </section>
 
+          <section class="step-feeds worksheet-section" aria-labelledby="step-feeds-heading">
+            <header class="section-heading">
+              <p>Step 3</p>
+              <h2 id="step-feeds-heading">Step Feeds</h2>
+              <span>Measured gravity sets the timing; approximate days are reminders.</span>
+            </header>
+
+            <div class="inline-notices" aria-label="Step feed notices">
+              <app-notices [notices]="facade.stepFeedsViewModel().notices" />
+            </div>
+
+            <p class="step-feed-summary">{{ facade.stepFeedsViewModel().summary }}</p>
+
+            @if (facade.stepFeedsViewModel().hasFeeds) {
+              <ol class="step-feed-list">
+                @for (feed of facade.stepFeedsViewModel().feeds; track feed.feedNumber) {
+                  <li class="step-feed-card">
+                    <div>
+                      <span>Feed {{ feed.feedNumber }}</span>
+                      <strong>{{ feed.honeyAmount }}</strong>
+                    </div>
+                    <p class="gravity-trigger">At SG {{ feed.gravityMilestone }}</p>
+                    <p>{{ feed.timingGuidance }}</p>
+                  </li>
+                }
+              </ol>
+            }
+          </section>
+
           @if (facade.summaryNotices().length) {
             <section class="notice-summary worksheet-section" aria-label="Active worksheet summary">
               <h2>Active worksheet notices</h2>
@@ -270,6 +299,58 @@ import { PlannerFacade } from './planner.facade';
       margin-bottom: 0.75rem;
     }
 
+    .step-feed-summary {
+      margin: 0;
+      color: var(--muted);
+      line-height: 1.5;
+    }
+
+    .step-feed-list {
+      display: grid;
+      gap: 0.75rem;
+      margin: 1rem 0 0;
+      padding: 0;
+      list-style: none;
+    }
+
+    .step-feed-card {
+      padding: 0.875rem;
+      border: 1px solid var(--border);
+      border-radius: 0.5rem;
+      background: var(--surface);
+    }
+
+    .step-feed-card div {
+      display: flex;
+      align-items: baseline;
+      justify-content: space-between;
+      gap: 1rem;
+    }
+
+    .step-feed-card span {
+      color: var(--muted);
+      font-size: 0.75rem;
+      font-weight: 900;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }
+
+    .step-feed-card strong {
+      font-size: 1.125rem;
+    }
+
+    .step-feed-card p {
+      margin: 0.5rem 0 0;
+      color: var(--muted);
+      line-height: 1.4;
+    }
+
+    .step-feed-card .gravity-trigger {
+      color: var(--text);
+      font-size: 1.125rem;
+      font-weight: 800;
+    }
+
     pre {
       overflow-x: auto;
       margin: 0;
@@ -291,6 +372,10 @@ import { PlannerFacade } from './planner.facade';
       .input-column {
         position: sticky;
         top: 1rem;
+      }
+
+      .step-feed-list {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
       }
     }
   `,

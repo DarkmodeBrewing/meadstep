@@ -2,6 +2,7 @@ import { computed, inject, Injectable, signal } from '@angular/core';
 import {
   BUILT_IN_YEASTS,
   convertVolume,
+  convertWeight,
   createCustomYeast,
   customYeastInputSchema,
   CUSTOM_YEAST_ID,
@@ -50,8 +51,25 @@ export interface PlannerInitialMustViewModel {
   notices: Notice[];
 }
 
+export interface PlannerStepFeedItemViewModel {
+  feedNumber: number;
+  honeyAmount: string;
+  gravityMilestone: string;
+  approximateDayLabel: string;
+  timingGuidance: string;
+}
+
+export interface PlannerStepFeedsViewModel {
+  valid: boolean;
+  hasFeeds: boolean;
+  summary: string;
+  feeds: PlannerStepFeedItemViewModel[];
+  notices: Notice[];
+}
+
 const YEAST_NOTICE_SCOPE = 'planner:yeast-tolerance';
 const GRAVITY_NOTICE_SCOPE = 'planner:gravity';
+const STEP_FEED_NOTICE_SCOPE = 'planner:step-feeds';
 
 @Injectable({ providedIn: 'root' })
 export class PlannerFacade {
@@ -211,6 +229,18 @@ export class PlannerFacade {
     })),
   );
 
+  readonly stepFeedNotices = computed<Notice[]>(() =>
+    (this.result()?.canonical.stepFeedingSchedule.warnings ?? []).map((warning) => ({
+      id: warning.code,
+      tone: warning.severity,
+      title: warning.title,
+      message: warning.message,
+      action: warning.action,
+      source: STEP_FEED_NOTICE_SCOPE,
+      placement: 'both',
+    })),
+  );
+
   readonly summaryNotices = this.noticeService.all;
 
   readonly volumeUnit = computed<'L' | 'gal'>(() => (this.unitSystem() === 'us' ? 'gal' : 'L'));
@@ -291,6 +321,46 @@ export class PlannerFacade {
     };
   });
 
+  readonly stepFeedsViewModel = computed<PlannerStepFeedsViewModel>(() => {
+    const result = this.result();
+
+    if (!result) {
+      return {
+        valid: false,
+        hasFeeds: false,
+        summary: 'Enter valid values to calculate step feeds.',
+        feeds: [],
+        notices: [],
+      };
+    }
+
+    const schedule = result.canonical.stepFeedingSchedule;
+
+    if (schedule.feeds.length === 0) {
+      return {
+        valid: true,
+        hasFeeds: false,
+        summary: 'No step feeding required for this plan.',
+        feeds: [],
+        notices: this.stepFeedNotices(),
+      };
+    }
+
+    return {
+      valid: true,
+      hasFeeds: true,
+      summary: `${schedule.feedCount} equal ${schedule.feedCount === 1 ? 'feed' : 'feeds'} from the reserved honey.`,
+      feeds: schedule.feeds.map((feed) => ({
+        feedNumber: feed.feedNumber,
+        honeyAmount: this.formatStepFeedHoney(feed.honeyGrams),
+        gravityMilestone: feed.gravityMilestone.toFixed(3),
+        approximateDayLabel: feed.approximateDayLabel,
+        timingGuidance: `Around ${feed.approximateDayLabel}; wait if measured SG has not reached ${feed.gravityMilestone.toFixed(3)}.`,
+      })),
+      notices: this.stepFeedNotices(),
+    };
+  });
+
   readonly resultRows = computed<ResultRow[]>(() => [
     ...this.initialMustViewModel().rows,
     {
@@ -311,6 +381,13 @@ export class PlannerFacade {
     const honeyUnit = display.honeyWeightUnit === 'pounds' ? 'lb' : 'kg';
     const yeast = this.selectedYeast();
     const tolerance = this.toleranceResult();
+    const stepFeeds = this.stepFeedsViewModel();
+    const stepFeedLines = stepFeeds.hasFeeds
+      ? stepFeeds.feeds.map(
+          (feed) =>
+            `- Feed ${feed.feedNumber}: add ${feed.honeyAmount} at SG ${feed.gravityMilestone} (${feed.timingGuidance})`,
+        )
+      : ['- None required.'];
 
     return [
       '# MeadStep honey-only plan',
@@ -331,6 +408,9 @@ export class PlannerFacade {
       tolerance?.estimatedToleranceLimitedFinalGravity !== undefined
         ? `Tolerance-limited FG hint: ${tolerance.estimatedToleranceLimitedFinalGravity.toFixed(3)}`
         : '',
+      '',
+      'Step feeds:',
+      ...stepFeedLines,
     ]
       .filter(Boolean)
       .join('\n');
@@ -410,8 +490,19 @@ export class PlannerFacade {
     }));
   }
 
+  private formatStepFeedHoney(honeyGrams: number): string {
+    if (this.unitSystem() === 'us') {
+      const pounds = convertWeight(honeyGrams / 1000, 'kilograms', 'pounds');
+
+      return `${pounds.toFixed(2)} lb`;
+    }
+
+    return `${honeyGrams.toFixed(0)} g`;
+  }
+
   private syncNotices(): void {
     this.noticeService.set(YEAST_NOTICE_SCOPE, this.yeastNotices());
     this.noticeService.set(GRAVITY_NOTICE_SCOPE, this.gravityNotices());
+    this.noticeService.set(STEP_FEED_NOTICE_SCOPE, this.stepFeedNotices());
   }
 }
