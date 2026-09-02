@@ -120,7 +120,8 @@ export const potentialAbvInputSchema = z
   .refine(
     ({ originalGravity, finalGravity }) => originalGravity >= finalGravity,
     {
-      message: 'Original gravity must be greater than or equal to final gravity.',
+      message:
+        'Original gravity must be greater than or equal to final gravity.',
       path: ['finalGravity'],
     },
   );
