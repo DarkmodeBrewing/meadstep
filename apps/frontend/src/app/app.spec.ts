@@ -4,9 +4,11 @@ import { TestBed } from '@angular/core/testing';
 import { provideRouter, Router } from '@angular/router';
 import { App } from './app';
 import { routes } from './app.routes';
+import { PlannerFacade } from './features/planner/planner.facade';
 import { AbvToolFacade } from './features/tools/abv/abv-tool.facade';
 import { GravityToolFacade } from './features/tools/gravity/gravity-tool.facade';
 import { HoneyOgToolFacade } from './features/tools/honey-og/honey-og-tool.facade';
+import { NoticeService } from './shared/notices/notice.service';
 import { PreferencesService } from './shared/preferences/preferences.service';
 
 describe('App routing workflows', () => {
@@ -31,6 +33,62 @@ describe('App routing workflows', () => {
     expect(router.url).toBe('/planner');
     expect(compiled.textContent).toContain('Honey-only planner');
     expect(compiled.textContent).toContain('Honey needed');
+    expect(compiled.textContent).toContain('EC-1118');
+    expect(compiled.textContent).toContain('Comfortable yeast tolerance margin');
+  });
+
+  it('renders curated and custom yeast tolerance workflows', async () => {
+    const router = TestBed.inject(Router);
+    const fixture = TestBed.createComponent(App);
+
+    await router.navigateByUrl('/planner');
+    fixture.detectChanges();
+    await fixture.whenStable();
+
+    const compiled = fixture.nativeElement as HTMLElement;
+    const yeastSelect = compiled.querySelector<HTMLSelectElement>('#yeast-selection');
+    const targetAbvInput = compiled.querySelector<HTMLInputElement>('#target-abv-percent');
+    expect(yeastSelect).toBeTruthy();
+    expect(targetAbvInput).toBeTruthy();
+
+    yeastSelect!.value = 'd47';
+    yeastSelect!.dispatchEvent(new Event('change'));
+    targetAbvInput!.value = '15';
+    targetAbvInput!.dispatchEvent(new Event('input'));
+    fixture.detectChanges();
+    await fixture.whenStable();
+
+    expect(compiled.textContent).toContain('Target exceeds yeast tolerance');
+    expect(compiled.textContent).toContain('FG may finish around 1.008');
+    expect(compiled.querySelector('.inline-notices article.error')).toBeTruthy();
+    expect(compiled.textContent).toContain('Active worksheet notices');
+
+    yeastSelect!.value = 'custom';
+    yeastSelect!.dispatchEvent(new Event('change'));
+    fixture.detectChanges();
+    await fixture.whenStable();
+
+    const advanced = compiled.querySelector<HTMLDetailsElement>('details.advanced');
+    const customNameInput = compiled.querySelector<HTMLInputElement>('#custom-yeast-name');
+    expect(advanced?.open).toBe(true);
+    expect(customNameInput?.getAttribute('aria-invalid')).toBe('true');
+    expect(compiled.textContent).toContain('Enter a yeast name.');
+
+    customNameInput!.value = 'House Kveik';
+    customNameInput!.dispatchEvent(new Event('input'));
+    const customToleranceInput =
+      compiled.querySelector<HTMLInputElement>('#custom-yeast-tolerance');
+    customToleranceInput!.value = '13';
+    customToleranceInput!.dispatchEvent(new Event('input'));
+    const nitrogenSelect = compiled.querySelector<HTMLSelectElement>('#custom-yeast-nitrogen');
+    nitrogenSelect!.value = 'high';
+    nitrogenSelect!.dispatchEvent(new Event('change'));
+    fixture.detectChanges();
+    await fixture.whenStable();
+
+    expect(compiled.textContent).toContain('House Kveik');
+    expect(compiled.textContent).toContain('13.0% tolerance · high nitrogen requirement');
+    expect(compiled.textContent).toContain('Target exceeds yeast tolerance');
   });
 
   it('renders the honey OG workflow with inline validation and assumptions', async () => {
@@ -189,6 +247,35 @@ describe('PreferencesService', () => {
 });
 
 describe('tool facades', () => {
+  it('maps yeast tolerance results into planner rows and the notice summary', () => {
+    const facade = TestBed.inject(PlannerFacade);
+    const noticeService = TestBed.inject(NoticeService);
+
+    expect(facade.selectedYeast()?.name).toBe('EC-1118');
+    expect(facade.yeastNotices()[0]?.tone).toBe('ok');
+
+    facade.setTargetAbvPercent(18);
+    expect(facade.toleranceResult()?.level).toBe('high');
+
+    facade.setSelectedYeastId('d47');
+    expect(facade.toleranceResult()?.level).toBe('severe');
+    expect(facade.toleranceResult()?.estimatedToleranceLimitedFinalGravity).toBeCloseTo(1.03, 3);
+    expect(noticeService.all()).toEqual(facade.yeastNotices());
+
+    facade.setSelectedYeastId('custom');
+    expect(facade.customYeastFieldErrors().name).toBe('Enter a yeast name.');
+    expect(facade.resultRows().at(-1)?.value).toBe('Enter valid values');
+
+    facade.setCustomYeastName('House Kveik');
+    facade.setCustomYeastTolerancePercent(13);
+    facade.setCustomYeastNitrogenRequirement('high');
+    expect(facade.selectedYeast()).toMatchObject({
+      name: 'House Kveik',
+      alcoholTolerancePercent: 13,
+      nitrogenRequirement: 'high',
+    });
+  });
+
   it('maps ABV calculator modes to results and validation state', () => {
     const facade = TestBed.inject(AbvToolFacade);
 
