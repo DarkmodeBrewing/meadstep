@@ -1,5 +1,5 @@
 import { DOCUMENT } from '@angular/common';
-import { effect, inject, Injectable, signal } from '@angular/core';
+import { DestroyRef, inject, Injectable, signal } from '@angular/core';
 import type { UnitSystem } from '@meadstep/core';
 
 export type ThemePreference = 'system' | 'light' | 'dark';
@@ -10,25 +10,33 @@ interface StoredPreferences {
 }
 
 const STORAGE_KEY = 'meadstep.preferences';
+const SYSTEM_THEME_QUERY = '(prefers-color-scheme: dark)';
 
 @Injectable({ providedIn: 'root' })
 export class PreferencesService {
   private readonly document = inject(DOCUMENT);
+  private readonly destroyRef = inject(DestroyRef);
   private readonly storage = this.document.defaultView?.localStorage;
+  private readonly systemThemeQuery =
+    this.document.defaultView?.matchMedia?.(SYSTEM_THEME_QUERY);
   private readonly initial = this.readPreferences();
+  private readonly handleSystemThemeChange = (): void => {
+    this.applyTheme('system');
+  };
 
   readonly unitSystem = signal<UnitSystem>(this.initial.unitSystem);
   readonly themePreference = signal<ThemePreference>(this.initial.themePreference);
 
   constructor() {
-    effect(() => {
-      const preferences = {
-        unitSystem: this.unitSystem(),
-        themePreference: this.themePreference(),
-      };
+    this.persist();
+    this.applyTheme(this.themePreference());
+    this.syncSystemThemeListener();
 
-      this.storage?.setItem(STORAGE_KEY, JSON.stringify(preferences));
-      this.applyTheme(preferences.themePreference);
+    this.destroyRef.onDestroy(() => {
+      this.systemThemeQuery?.removeEventListener(
+        'change',
+        this.handleSystemThemeChange,
+      );
     });
   }
 
@@ -41,6 +49,7 @@ export class PreferencesService {
     this.themePreference.set(themePreference);
     this.persist();
     this.applyTheme(themePreference);
+    this.syncSystemThemeListener();
   }
 
   private readPreferences(): StoredPreferences {
@@ -66,15 +75,28 @@ export class PreferencesService {
 
   private applyTheme(themePreference: ThemePreference): void {
     const root = this.document.documentElement;
-    const resolved = themePreference === 'system' ? this.resolveSystemTheme() : themePreference;
+    const resolved =
+      themePreference === 'system' ? this.resolveSystemTheme() : themePreference;
 
     root.dataset['theme'] = resolved;
   }
 
   private resolveSystemTheme(): 'light' | 'dark' {
-    return this.document.defaultView?.matchMedia?.('(prefers-color-scheme: dark)').matches
-      ? 'dark'
-      : 'light';
+    return this.systemThemeQuery?.matches ? 'dark' : 'light';
+  }
+
+  private syncSystemThemeListener(): void {
+    this.systemThemeQuery?.removeEventListener(
+      'change',
+      this.handleSystemThemeChange,
+    );
+
+    if (this.themePreference() === 'system') {
+      this.systemThemeQuery?.addEventListener(
+        'change',
+        this.handleSystemThemeChange,
+      );
+    }
   }
 
   private persist(): void {
