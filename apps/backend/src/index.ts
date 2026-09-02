@@ -1,23 +1,12 @@
-import { createServer } from 'node:http';
-import { z } from 'zod';
+import { loadConfig } from './config/config.js';
+import { buildServer } from './server.js';
 
-const envSchema = z.object({
-  PORT: z.coerce.number().int().positive().default(3000),
-});
+const config = loadConfig();
+const server = buildServer();
 
-const env = envSchema.parse(process.env);
-
-const server = createServer((request, response) => {
-  if (request.url === '/healthz') {
-    response.writeHead(200, { 'content-type': 'application/json' });
-    response.end(JSON.stringify({ status: 'ok' }));
-    return;
-  }
-
-  response.writeHead(404, { 'content-type': 'application/json' });
-  response.end(JSON.stringify({ error: 'not_found' }));
-});
-
-server.listen(env.PORT, () => {
-  console.log(`Backend listening on http://localhost:${env.PORT}`);
-});
+try {
+  await server.listen({ host: config.host, port: config.port });
+} catch (error) {
+  server.log.error(error);
+  process.exit(1);
+}

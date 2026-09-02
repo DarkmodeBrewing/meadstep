@@ -18,13 +18,31 @@ paths:
       responses:
         '200':
           description: Backend process is alive.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthResponse'
   /readyz:
     get:
       tags: [Health]
       summary: Readiness check
+      parameters:
+        - $ref: '#/components/parameters/RequestIdHeader'
       responses:
         '200':
           description: Backend is configured and core calculations are available.
+          headers:
+            X-Request-Id:
+              $ref: '#/components/headers/RequestId'
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/ReadinessResponse'
   /api/v1/reference/yeasts:
     get:
       tags: [Reference]
@@ -100,7 +118,42 @@ paths:
         '200':
           description: Fruit sugar and gravity contribution result.
 components:
+  parameters:
+    RequestIdHeader:
+      name: X-Request-Id
+      in: header
+      required: false
+      schema:
+        type: string
+        minLength: 8
+        maxLength: 128
+        pattern: '^[A-Za-z0-9._:-]+$'
+  headers:
+    RequestId:
+      description: Sane inbound request id or a generated id.
+      schema:
+        type: string
   schemas:
+    HealthResponse:
+      type: object
+      required: [status]
+      properties:
+        status:
+          type: string
+          const: ok
+    ReadinessResponse:
+      type: object
+      required: [status, config, core]
+      properties:
+        status:
+          type: string
+          const: ready
+        config:
+          type: string
+          const: valid
+        core:
+          type: string
+          const: available
     ApiMeta:
       type: object
       required: [apiVersion, requestId]
@@ -115,6 +168,13 @@ components:
           type: string
         requestId:
           type: string
+    SuccessEnvelope:
+      type: object
+      required: [data, meta]
+      properties:
+        data: {}
+        meta:
+          $ref: '#/components/schemas/ApiMeta'
     ApiError:
       type: object
       required: [code, message]
