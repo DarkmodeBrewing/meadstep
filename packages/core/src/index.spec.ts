@@ -127,4 +127,14 @@ describe('gravity conversions', () => {
       estimatePotentialAbv({ originalGravity: 1.09, finalGravity: 1.01 }),
     ).toBeCloseTo(10.5, 1);
   });
+
+  it('rejects a final gravity above the original gravity', () => {
+    expect(() =>
+      estimatePotentialAbv({ originalGravity: 1.01, finalGravity: 1.02 }),
+    ).toThrow('Original gravity must be greater than or equal to final gravity.');
+
+    expect(
+      estimatePotentialAbv({ originalGravity: 1.01, finalGravity: 1.01 }),
+    ).toBe(0);
+  });
 });
