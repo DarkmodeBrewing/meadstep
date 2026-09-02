@@ -112,10 +112,18 @@ export const honeyOriginalGravityResultSchema = z.object({
   }),
 });
 
-export const potentialAbvInputSchema = z.object({
-  originalGravity: z.number().positive(),
-  finalGravity: z.number().positive().default(ASSUMED_DRY_FINAL_GRAVITY),
-});
+export const potentialAbvInputSchema = z
+  .object({
+    originalGravity: z.number().positive(),
+    finalGravity: z.number().positive().default(ASSUMED_DRY_FINAL_GRAVITY),
+  })
+  .refine(
+    ({ originalGravity, finalGravity }) => originalGravity >= finalGravity,
+    {
+      message: 'Original gravity must be greater than or equal to final gravity.',
+      path: ['finalGravity'],
+    },
+  );
 
 export type HoneyOriginalGravityInput = z.infer<
   typeof honeyOriginalGravityInputSchema
