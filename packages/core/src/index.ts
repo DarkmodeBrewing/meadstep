@@ -8,6 +8,10 @@ const ASSUMED_DRY_FINAL_GRAVITY = 1;
 const LITERS_PER_US_GALLON = 3.785411784;
 const KILOGRAMS_PER_POUND = 0.45359237;
 
+export const MIN_CALCULATOR_GRAVITY = 0.9;
+export const MAX_CALCULATOR_GRAVITY = 1.3;
+export const MAX_CALCULATOR_ABV_PERCENT = 30;
+
 export const volumeUnitSchema = z.enum(['liters', 'gallons']);
 export const weightUnitSchema = z.enum(['kilograms', 'pounds']);
 export const unitSystemSchema = z.enum(['metric', 'us']);
@@ -126,6 +130,48 @@ export const potentialAbvInputSchema = z
     },
   );
 
+const calculatorGravitySchema = z
+  .number()
+  .min(MIN_CALCULATOR_GRAVITY)
+  .max(MAX_CALCULATOR_GRAVITY);
+
+export const classicAbvInputSchema = z
+  .object({
+    originalGravity: calculatorGravitySchema,
+    finalGravity: calculatorGravitySchema,
+  })
+  .refine(
+    ({ originalGravity, finalGravity }) => originalGravity >= finalGravity,
+    {
+      message: 'Final gravity must not exceed original gravity.',
+      path: ['finalGravity'],
+    },
+  )
+  .refine(
+    ({ originalGravity, finalGravity }) =>
+      (originalGravity - finalGravity) * ABV_POINTS_FACTOR <=
+      MAX_CALCULATOR_ABV_PERCENT,
+    {
+      message: `Calculated ABV must not exceed ${MAX_CALCULATOR_ABV_PERCENT}%.`,
+      path: ['finalGravity'],
+    },
+  );
+
+export const reverseAbvInputSchema = z
+  .object({
+    originalGravity: calculatorGravitySchema,
+    targetAbvPercent: z.number().nonnegative().max(MAX_CALCULATOR_ABV_PERCENT),
+  })
+  .refine(
+    ({ originalGravity, targetAbvPercent }) =>
+      originalGravity - targetAbvPercent / ABV_POINTS_FACTOR >=
+      MIN_CALCULATOR_GRAVITY,
+    {
+      message: `Target ABV implies a final gravity below ${MIN_CALCULATOR_GRAVITY.toFixed(3)}.`,
+      path: ['targetAbvPercent'],
+    },
+  );
+
 export type HoneyOriginalGravityInput = z.infer<
   typeof honeyOriginalGravityInputSchema
 >;
@@ -133,6 +179,8 @@ export type HoneyOriginalGravityResult = z.infer<
   typeof honeyOriginalGravityResultSchema
 >;
 export type PotentialAbvInput = z.input<typeof potentialAbvInputSchema>;
+export type ClassicAbvInput = z.infer<typeof classicAbvInputSchema>;
+export type ReverseAbvInput = z.infer<typeof reverseAbvInputSchema>;
 
 export function planHoneyOnlyBatch(
   input: HoneyOnlyPlannerInput,
@@ -210,6 +258,24 @@ export function estimatePotentialAbv(input: PotentialAbvInput): number {
   return (
     (validatedInput.originalGravity - validatedInput.finalGravity) *
     ABV_POINTS_FACTOR
+  );
+}
+
+export function calculateAbv(input: ClassicAbvInput): number {
+  const validatedInput = classicAbvInputSchema.parse(input);
+
+  return (
+    (validatedInput.originalGravity - validatedInput.finalGravity) *
+    ABV_POINTS_FACTOR
+  );
+}
+
+export function estimateFinalGravityForAbv(input: ReverseAbvInput): number {
+  const validatedInput = reverseAbvInputSchema.parse(input);
+
+  return (
+    validatedInput.originalGravity -
+    validatedInput.targetAbvPercent / ABV_POINTS_FACTOR
   );
 }
 

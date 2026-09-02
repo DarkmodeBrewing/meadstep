@@ -1,7 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import {
+  calculateAbv,
   convertVolume,
   convertWeight,
+  estimateFinalGravityForAbv,
   estimateHoneyOriginalGravity,
   estimatePotentialAbv,
   gravityToBrix,
@@ -138,5 +140,37 @@ describe('gravity conversions', () => {
     expect(
       estimatePotentialAbv({ originalGravity: 1.01, finalGravity: 1.01 }),
     ).toBe(0);
+  });
+});
+
+describe('ABV calculator', () => {
+  it('calculates ABV from original and final gravity', () => {
+    expect(
+      calculateAbv({ originalGravity: 1.09, finalGravity: 1.01 }),
+    ).toBeCloseTo(10.5, 1);
+  });
+
+  it('estimates final gravity from original gravity and target ABV', () => {
+    expect(
+      estimateFinalGravityForAbv({
+        originalGravity: 1.09,
+        targetAbvPercent: 10.5,
+      }),
+    ).toBeCloseTo(1.01, 3);
+  });
+
+  it('rejects out-of-range and physically invalid calculator inputs', () => {
+    expect(() =>
+      calculateAbv({ originalGravity: 1.31, finalGravity: 1.01 }),
+    ).toThrow();
+    expect(() =>
+      calculateAbv({ originalGravity: 1.01, finalGravity: 1.02 }),
+    ).toThrow('Final gravity must not exceed original gravity.');
+    expect(() =>
+      estimateFinalGravityForAbv({
+        originalGravity: 1.05,
+        targetAbvPercent: 30,
+      }),
+    ).toThrow('Target ABV implies a final gravity below 0.900.');
   });
 });
